@@ -1,5 +1,5 @@
 // MultiplayerGameScreen.tsx — Live board synced to Firestore
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated, Platform, Pressable, SafeAreaView, StatusBar,
   StyleSheet, Text, useWindowDimensions, View, Alert,
@@ -65,11 +65,13 @@ interface Props {
   navigate: (r: AppRoute) => void;
 }
 
-export default function MultiplayerGameScreen({ matchId, playerSide, myUid, myName, navigate }: Props) {
+export default function MultiplayerGameScreen({ route, navigation }: any) {
+  const { matchId, playerSide, myUid, myName } = route.params;
   const { width: W } = useWindowDimensions();
   const FONT = Math.floor((W * 0.9 / 3) * 0.44);
   const { match, optimisticBoard, myTurn, error, applyMove, resign } = useMatch(matchId, myUid, playerSide);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [resultRecorded, setResultRecorded] = useState(false);
 
   const board: Board = optimisticBoard ?? match?.board ?? Array(9).fill(null);
   const phase = match ? (canPlace(board, playerSide) ? 'placement' : 'movement') : 'placement';
@@ -77,6 +79,15 @@ export default function MultiplayerGameScreen({ matchId, playerSide, myUid, myNa
   const winCells = getWinCells(board, winner);
   const opponentSide: Player = playerSide === 'X' ? 'O' : 'X';
   const opponentName = playerSide === 'X' ? match?.playerO?.displayName ?? '—' : match?.playerX?.displayName ?? '—';
+
+  // Handle match end
+  useEffect(() => {
+    if (match?.status === 'finished' && !resultRecorded) {
+      setResultRecorded(true);
+      const win = winner === playerSide;
+      import('../services/userService').then(s => s.recordMatchResult(myUid, win));
+    }
+  }, [match?.status, winner, playerSide, myUid, resultRecorded]);
 
   const handleCell = useCallback(async (index: number) => {
     if (!match || !myTurn || match.status !== 'active') return;
@@ -105,7 +116,7 @@ export default function MultiplayerGameScreen({ matchId, playerSide, myUid, myNa
   const handleResign = () => {
     Alert.alert('Resign?', 'You will forfeit the match.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Resign', style: 'destructive', onPress: () => resign().then(() => navigate({ name: 'Lobby' })) },
+      { text: 'Resign', style: 'destructive', onPress: () => resign().then(() => navigation.goBack()) },
     ]);
   };
 
@@ -130,7 +141,7 @@ export default function MultiplayerGameScreen({ matchId, playerSide, myUid, myNa
 
       {/* Header */}
       <View style={ms.header}>
-        <Pressable onPress={() => navigate({ name: 'Lobby' })} style={ms.backBtn}>
+        <Pressable onPress={() => navigation.goBack()} style={ms.backBtn}>
           <Text style={ms.backTxt}>← Lobby</Text>
         </Pressable>
         <Text style={ms.matchCode}>{matchId}</Text>
@@ -180,7 +191,7 @@ export default function MultiplayerGameScreen({ matchId, playerSide, myUid, myNa
 
       {/* Play again */}
       {status === 'finished' && (
-        <Pressable style={ms.playAgainBtn} onPress={() => navigate({ name: 'Lobby' })}>
+        <Pressable style={ms.playAgainBtn} onPress={() => navigation.goBack()}>
           <Text style={ms.playAgainTxt}>▶  Play Again</Text>
         </Pressable>
       )}

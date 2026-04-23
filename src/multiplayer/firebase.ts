@@ -19,6 +19,7 @@
 
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 
 // ── Firebase Configuration ─────────────────────────────────────
 // These are loaded from environment variables (EXPO_PUBLIC_*)
@@ -43,3 +44,4 @@ if (!firebaseConfig.apiKey) {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 export const db = getFirestore(app);
+export const auth = getAuth(app);
