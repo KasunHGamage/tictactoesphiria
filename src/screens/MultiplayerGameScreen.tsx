@@ -44,10 +44,16 @@ interface CellProps {
   index: number; value: Player | null; isSelected: boolean;
   isWinCell: boolean; isOtherDimmed: boolean; fontSize: number; disabled: boolean;
   onPress: (i: number) => void;
+  onLayout: (index: number, layout: { x: number, y: number, w: number, h: number }) => void;
 }
-function Cell({ index, value, isSelected, isWinCell, isOtherDimmed, fontSize, disabled, onPress }: CellProps) {
+function Cell({ index, value, isSelected, isWinCell, isOtherDimmed, fontSize, disabled, onPress, onLayout }: CellProps) {
   const scale = useSharedValue(1);
   const pulse = useSharedValue(1);
+
+  const handleLayout = (e: any) => {
+    const { x, y, width, height } = e.nativeEvent.layout;
+    onLayout(index, { x, y, w: width, h: height });
+  };
 
   useEffect(() => {
     if (isWinCell) {
@@ -84,7 +90,7 @@ function Cell({ index, value, isSelected, isWinCell, isOtherDimmed, fontSize, di
   const glow = value === 'X' ? C.xGlow : C.oGlow;
 
   return (
-    <Pressable onPress={handle} accessibilityLabel={`cell-${index}`} style={ms.cellPress}>
+    <Pressable onLayout={handleLayout} onPress={handle} accessibilityLabel={`cell-${index}`} style={ms.cellPress}>
       <Animated.View style={[ms.cellInner, animatedCellInner]}>
         {value && (
           <Text style={{ 
@@ -102,16 +108,13 @@ function Cell({ index, value, isSelected, isWinCell, isOtherDimmed, fontSize, di
 }
 
 
-function StrikeLine({ winLine, boardWidth }: { winLine: number[] | null, boardWidth: number }) {
+function StrikeLine({ winLine, layouts }: { winLine: number[] | null, layouts: Record<number, any> }) {
   const progress = useSharedValue(0);
-  
-  // Use derived values to avoid reading props inside the worklet directly if possible,
-  // although Reanimated 3 handles this better, it's safer for stability.
   const winLineValue = useDerivedValue(() => winLine);
 
   useEffect(() => {
     if (winLine) {
-      progress.value = withDelay(150, withTiming(1, { duration: 400, easing: Easing.out(Easing.quad) }));
+      progress.value = withDelay(200, withTiming(1, { duration: 450, easing: Easing.out(Easing.quad) }));
     } else {
       progress.value = 0;
     }
@@ -119,43 +122,45 @@ function StrikeLine({ winLine, boardWidth }: { winLine: number[] | null, boardWi
 
   const animatedStyle = useAnimatedStyle(() => {
     const line = winLineValue.value;
-    if (!line) return { opacity: 0 };
+    if (!line || !layouts[line[0]] || !layouts[line[2]]) return { opacity: 0 };
 
-    const [a, b, c] = line;
-    const isRow = a % 3 === 0 && b === a + 1 && c === a + 2;
-    const isCol = a < 3 && b === a + 3 && c === a + 6;
-    const isDiag1 = a === 0 && b === 4 && c === 8;
-    const isDiag2 = a === 2 && b === 4 && c === 6;
+    const start = layouts[line[0]];
+    const end = layouts[line[2]];
 
-    let style: any = { 
-      position: 'absolute', backgroundColor: C.gold, borderRadius: 4, 
-      height: 6, shadowColor: C.gold, shadowOpacity: 0.8, 
-      shadowRadius: 10, elevation: 10, zIndex: 10,
-      opacity: 1
+    const startX = start.x + start.w / 2;
+    const startY = start.y + start.h / 2;
+    const endX = end.x + end.w / 2;
+    const endY = end.y + end.h / 2;
+
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx);
+
+    return {
+      position: 'absolute',
+      top: startY - 3, // Center the line height (6/2)
+      left: startX,
+      width: length,
+      height: 6,
+      backgroundColor: C.gold,
+      borderRadius: 4,
+      shadowColor: C.gold,
+      shadowOpacity: 0.8,
+      shadowRadius: 10,
+      elevation: 10,
+      zIndex: 20,
+      opacity: 1,
+      transform: [
+        { rotate: `${angle}rad` },
+        { scaleX: progress.value }
+      ],
+      // Reanimated 3 supports transformOrigin as a property
+      // If using older Reanimated, you'd need to translate it
+      // but transformOrigin is supported in modern versions
+      // @ts-ignore
+      transformOrigin: 'left',
     };
-
-    if (isRow) {
-      style.width = interpolate(progress.value, [0, 1], [0, boardWidth * 0.9]);
-      style.top = (a / 3) * (boardWidth / 3) + (boardWidth / 6) - 3;
-      style.left = boardWidth * 0.05;
-    } else if (isCol) {
-      style.width = 6;
-      style.height = interpolate(progress.value, [0, 1], [0, boardWidth * 0.9]);
-      style.left = a * (boardWidth / 3) + (boardWidth / 6) - 3;
-      style.top = boardWidth * 0.05;
-    } else if (isDiag1) {
-      style.width = interpolate(progress.value, [0, 1], [0, boardWidth * 1.2]);
-      style.top = boardWidth / 2 - 3;
-      style.left = -boardWidth * 0.1;
-      style.transform = [{ rotate: '45deg' }];
-    } else if (isDiag2) {
-      style.width = interpolate(progress.value, [0, 1], [0, boardWidth * 1.2]);
-      style.top = boardWidth / 2 - 3;
-      style.left = -boardWidth * 0.1;
-      style.transform = [{ rotate: '-45deg' }];
-    }
-
-    return style;
   });
 
   return <Animated.View style={animatedStyle} />;
@@ -171,11 +176,16 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [resultRecorded, setResultRecorded] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [tileLayouts, setTileLayouts] = useState<Record<number, any>>({});
   
   // Reanimated values for board focus
   const boardScale = useSharedValue(1);
   const resultScale = useSharedValue(0.8);
   const resultOpacity = useSharedValue(0);
+
+  const handleTileLayout = useCallback((index: number, layout: any) => {
+    setTileLayouts(prev => ({ ...prev, [index]: layout }));
+  }, []);
 
   // Reset EVERYTHING when matchId changes or screen is focused
   const resetLocalState = useCallback(() => {
@@ -341,10 +351,11 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
                   isSelected={selectedIdx === idx} isWinCell={winSet.has(idx)}
                   isOtherDimmed={!!winner}
                   fontSize={FONT} disabled={!myTurn || status !== 'active'}
-                  onPress={handleCell} />
+                  onPress={handleCell}
+                  onLayout={handleTileLayout} />
               ))}
               {/* Strike Line */}
-              <StrikeLine winLine={winningLine} boardWidth={BOARD_WIDTH} />
+              <StrikeLine winLine={winningLine} layouts={tileLayouts} />
             </View>
           </Animated.View>
 
