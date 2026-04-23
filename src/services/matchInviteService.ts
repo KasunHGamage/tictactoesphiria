@@ -71,13 +71,18 @@ export function listenToIncomingInvites(uid: string, onUpdate: (invites: MatchIn
  * Listen for any invitation involving me that has been 'accepted'.
  * This allows the sender to know when the recipient has joined.
  */
+const handledInvites = new Set<string>();
+
 export function listenToAcceptedInvites(uid: string, onMatchStarted: (matchId: string, playerSide: 'X' | 'O') => void): Unsubscribe {
   // Check invites where I am the sender AND status changed to accepted
   const qFrom = query(collection(db, INVITES), where('from', '==', uid), where('status', '==', 'accepted'));
   const unsubFrom = onSnapshot(qFrom, (snap) => {
     snap.docs.forEach(d => {
       const data = d.data() as MatchInvite;
-      if (data.matchId) onMatchStarted(data.matchId, 'X');
+      if (data.matchId && !handledInvites.has(d.id)) {
+        handledInvites.add(d.id);
+        onMatchStarted(data.matchId, 'X');
+      }
     });
   });
 
@@ -86,7 +91,10 @@ export function listenToAcceptedInvites(uid: string, onMatchStarted: (matchId: s
   const unsubTo = onSnapshot(qTo, (snap) => {
     snap.docs.forEach(d => {
       const data = d.data() as MatchInvite;
-      if (data.matchId) onMatchStarted(data.matchId, 'O');
+      if (data.matchId && !handledInvites.has(d.id)) {
+        handledInvites.add(d.id);
+        onMatchStarted(data.matchId, 'O');
+      }
     });
   });
 

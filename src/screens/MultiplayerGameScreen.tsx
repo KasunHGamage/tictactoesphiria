@@ -1,9 +1,9 @@
-// MultiplayerGameScreen.tsx — Live board synced to Firestore
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated as RNAnimated, Platform, Pressable, SafeAreaView, StatusBar,
   StyleSheet, Text, useWindowDimensions, View, Alert, ScrollView,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import Animated, { 
   useSharedValue, useAnimatedStyle, withTiming, withSequence, 
   withDelay, withRepeat, Easing, interpolate, runOnJS, useDerivedValue 
@@ -167,6 +167,7 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
   const BOARD_WIDTH = W * 0.9;
   const FONT = Math.floor((BOARD_WIDTH / 3) * 0.44);
   const { match, optimisticBoard, myTurn, error, applyMove, resign } = useMatch(matchId, myUid, playerSide);
+  
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [resultRecorded, setResultRecorded] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -175,6 +176,31 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
   const boardScale = useSharedValue(1);
   const resultScale = useSharedValue(0.8);
   const resultOpacity = useSharedValue(0);
+
+  // Reset EVERYTHING when matchId changes or screen is focused
+  const resetLocalState = useCallback(() => {
+    console.log("Game State Resetting for Match:", matchId);
+    setSelectedIdx(null);
+    setResultRecorded(false);
+    setShowConfetti(false);
+    boardScale.value = 1;
+    resultScale.value = 0.8;
+    resultOpacity.value = 0;
+  }, [matchId]);
+
+  useEffect(() => {
+    resetLocalState();
+  }, [matchId, resetLocalState]);
+
+  useFocusEffect(
+    useCallback(() => {
+      // Logic when focusing
+      return () => {
+        // Logic when unfocusing
+        resetLocalState();
+      };
+    }, [resetLocalState])
+  );
 
   const board: Board = optimisticBoard ?? match?.board ?? Array(9).fill(null);
   const phase = match ? (canPlace(board, playerSide) ? 'placement' : 'movement') : 'placement';

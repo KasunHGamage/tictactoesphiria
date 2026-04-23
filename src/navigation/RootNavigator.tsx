@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────
 
 import React from 'react';
-import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef, StackActions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ActivityIndicator, View, Platform } from 'react-native';
@@ -93,13 +93,21 @@ export default function RootNavigator() {
   // Global listener for accepted invitations
   useMatchInvitations((matchId, playerSide) => {
     if (navigationRef.isReady() && user) {
-      // @ts-ignore
-      navigationRef.navigate('MultiplayerGame', {
+      const currentRoute = navigationRef.getCurrentRoute();
+      const params = {
         matchId,
         playerSide,
         myUid: user.uid,
         myName: user.displayName || 'Player'
-      });
+      };
+
+      if (currentRoute?.name === 'MultiplayerGame') {
+        // If already in a game, REPLACE the stack to ensure fresh state
+        navigationRef.dispatch(StackActions.replace('MultiplayerGame', params));
+      } else {
+        // @ts-ignore
+        navigationRef.navigate('MultiplayerGame', params);
+      }
     }
   });
 

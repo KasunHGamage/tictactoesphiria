@@ -14,9 +14,15 @@ export function useMatch(matchId: string, myUid: string, playerSide: Player) {
 
   useEffect(() => {
     if (!matchId) return;
+    
+    // Reset state for new matchId
+    setMatch(null);
+    setOptimisticBoard(null);
+    setError(null);
+
     const unsub = listenToMatch(matchId, (updated) => {
       setMatch(updated);
-      setOptimisticBoard(null); // Clear optimistic state on sync
+      setOptimisticBoard(null);
     });
     return unsub;
   }, [matchId]);
