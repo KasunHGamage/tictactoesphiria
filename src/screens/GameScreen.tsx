@@ -165,6 +165,7 @@ export default function GameScreen({ navigation }: any) {
   const [showConfetti, setShowConfetti] = useState(false);
   const [xpGained, setXpGained] = useState<number | null>(null);
   const [isProcessingRound, setIsProcessingRound] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
 
   const boardScale = useSharedValue(1);
   const resultScale = useSharedValue(0.8);
@@ -186,7 +187,8 @@ export default function GameScreen({ navigation }: any) {
 
   // AI Turn Logic
   useEffect(() => {
-    if (state.status === 'playing' && state.currentPlayer === 'O') {
+    if (state.status === 'playing' && state.currentPlayer === 'O' && !isThinking) {
+      setIsThinking(true);
       const timer = setTimeout(() => {
         const move = getAIMove(state.board, state.boardSize, state.winLength, state.pieceLimit, bot.difficulty);
         let nextBoard: Board | null;
@@ -212,10 +214,11 @@ export default function GameScreen({ navigation }: any) {
             selectedIndex: null,
           }));
         }
-      }, 600 + Math.random() * 400);
+        setIsThinking(false);
+      }, 800 + Math.random() * 400);
       return () => clearTimeout(timer);
     }
-  }, [state.status, state.currentPlayer, state.board, state.boardSize, state.winLength, state.pieceLimit, bot.difficulty]);
+  }, [state.status, state.currentPlayer, state.board, state.boardSize, state.winLength, state.pieceLimit, bot.difficulty, isThinking]);
 
   // Round End Lifecycle
   useEffect(() => {
@@ -283,7 +286,7 @@ export default function GameScreen({ navigation }: any) {
   };
 
   const handleCellPress = async (index: number) => {
-    if (state.status !== 'playing' || state.currentPlayer !== 'X') return;
+    if (state.status !== 'playing' || state.currentPlayer !== 'X' || isThinking) return;
     const { board, phase, selectedIndex, boardSize, winLength, pieceLimit } = state;
 
     if (phase === 'placement') {
@@ -378,7 +381,11 @@ export default function GameScreen({ navigation }: any) {
               </View>
               <View style={styles.instrHintBox}>
                 <Text style={styles.instrHintTxt}>
-                  {state.phase === 'placement' ? `👉 Place ${state.pieceLimit - getPlayerPieces(state.board, 'X').length} more` : '👉 Move a piece'}
+                  {isThinking 
+                    ? '⌛ AI is thinking...' 
+                    : state.phase === 'placement' 
+                      ? `👉 Place ${state.pieceLimit - getPlayerPieces(state.board, 'X').length} more` 
+                      : '👉 Move a piece'}
                 </Text>
               </View>
             </View>
@@ -391,7 +398,7 @@ export default function GameScreen({ navigation }: any) {
                 <Cell 
                   key={idx} index={idx} value={cell} boardSize={state.boardSize}
                   isSelected={state.selectedIndex === idx} isWinCell={state.winningLine?.includes(idx)}
-                  fontSize={boardFontSize} disabled={state.currentPlayer !== 'X' || state.status !== 'playing'}
+                  fontSize={boardFontSize} disabled={state.currentPlayer !== 'X' || state.status !== 'playing' || isThinking}
                   onPress={handleCellPress} onLayout={(i: number, l: any) => setTileLayouts(p => ({ ...p, [i]: l }))}
                 />
               ))}
