@@ -16,7 +16,7 @@ import {
   canPlace, checkWinner, createBoard, getPlayerPieces,
   isDraw, movePiece, placePiece, getWinningLine, getGameConfig
 } from '../game/gameEngine';
-import { getAIMove, AIDifficulty } from '../game/aiEngine';
+import { getAIMove } from '../game/aiEngine';
 import { AuthContext } from '../auth/AuthContext';
 import { recordMatchResult, getUserProfile } from '../services/userService';
 
@@ -34,9 +34,9 @@ const C = {
 // ── Bot Definitions ───────────────────────────────────────────────
 
 const BOTS = [
-  { name: 'Nova 🤖', level: 1, difficulty: 'random' as AIDifficulty },
-  { name: 'Titan ⚡', level: 4, difficulty: 'medium' as AIDifficulty },
-  { name: 'Phantom 🧠', level: 7, difficulty: 'hard' as AIDifficulty },
+  { name: 'Nova 🤖', level: 1, difficulty: 'random' },
+  { name: 'Titan ⚡', level: 4, difficulty: 'medium' },
+  { name: 'Phantom 🧠', level: 7, difficulty: 'hard' },
 ];
 
 function getBotForLevel(level: number) {
@@ -161,17 +161,22 @@ export default function GameScreen({ navigation }: any) {
     selectedIndex: null,
   }));
 
+  const boardRef = useRef(state.board);
+  const isAITurnRunning = useRef(false);
+
+  useEffect(() => {
+    boardRef.current = state.board;
+  }, [state.board]);
+
   const [tileLayouts, setTileLayouts] = useState<Record<number, any>>({});
   const [showConfetti, setShowConfetti] = useState(false);
   const [xpGained, setXpGained] = useState<number | null>(null);
   const [isProcessingRound, setIsProcessingRound] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
 
-  const boardScale = useSharedValue(1);
   const resultScale = useSharedValue(0.8);
   const resultOpacity = useSharedValue(0);
 
-  // Sync user profile
   useEffect(() => {
     if (user?.uid) {
       getUserProfile(user.uid).then(profile => {
@@ -185,40 +190,44 @@ export default function GameScreen({ navigation }: any) {
 
   const bot = getBotForLevel(level);
 
-  // AI Turn Logic
-  useEffect(() => {
-    if (state.status === 'playing' && state.currentPlayer === 'O' && !isThinking) {
-      setIsThinking(true);
-      const timer = setTimeout(() => {
-        const move = getAIMove(state.board, state.boardSize, state.winLength, state.pieceLimit, bot.difficulty);
-        let nextBoard: Board | null;
-        if (move.fromIndex !== undefined) {
-          nextBoard = movePiece(state.board, move.fromIndex, move.toIndex, 'O');
-        } else {
-          nextBoard = placePiece(state.board, move.toIndex, 'O');
-        }
+  const triggerAI = useCallback(() => {
+    if (isAITurnRunning.current || state.status !== 'playing') return;
+    isAITurnRunning.current = true;
+    setIsThinking(true);
 
-        if (nextBoard) {
-          const winningLine = getWinningLine(nextBoard, state.boardSize, state.winLength);
-          const winner = winningLine ? 'O' : null;
-          const draw = !winner && isDraw(nextBoard, state.boardSize, state.winLength);
+    setTimeout(() => {
+      // READ ONLY FROM REF TO AVOID STALE STATE
+      const currentBoard = boardRef.current;
+      const move = getAIMove(currentBoard, state.boardSize, state.winLength, state.pieceLimit);
+      
+      let nextBoard: Board | null;
+      if (move.fromIndex !== undefined) {
+        nextBoard = movePiece(currentBoard, move.fromIndex, move.toIndex, 'O');
+      } else {
+        nextBoard = placePiece(currentBoard, move.toIndex, 'O');
+      }
 
-          setState(prev => ({
-            ...prev,
-            board: nextBoard!,
-            currentPlayer: 'X',
-            phase: canPlace(nextBoard!, 'X', state.pieceLimit) ? 'placement' : 'movement',
-            status: winner ? 'won' : draw ? 'draw' : 'playing',
-            winner: winner ?? null,
-            winningLine: winningLine ?? null,
-            selectedIndex: null,
-          }));
-        }
-        setIsThinking(false);
-      }, 800 + Math.random() * 400);
-      return () => clearTimeout(timer);
-    }
-  }, [state.status, state.currentPlayer, state.board, state.boardSize, state.winLength, state.pieceLimit, bot.difficulty, isThinking]);
+      if (nextBoard) {
+        const winningLine = getWinningLine(nextBoard, state.boardSize, state.winLength);
+        const winner = winningLine ? 'O' : null;
+        const draw = !winner && isDraw(nextBoard, state.boardSize, state.winLength);
+
+        setState(prev => ({
+          ...prev,
+          board: nextBoard!,
+          currentPlayer: 'X',
+          phase: canPlace(nextBoard!, 'X', state.pieceLimit) ? 'placement' : 'movement',
+          status: winner ? 'won' : draw ? 'draw' : 'playing',
+          winner: winner ?? null,
+          winningLine: winningLine ?? null,
+          selectedIndex: null,
+        }));
+      }
+
+      setIsThinking(false);
+      isAITurnRunning.current = false;
+    }, 500);
+  }, [state.boardSize, state.winLength, state.pieceLimit, state.status]);
 
   // Round End Lifecycle
   useEffect(() => {
@@ -281,13 +290,17 @@ export default function GameScreen({ navigation }: any) {
     setShowConfetti(false);
     setXpGained(null);
     setIsProcessingRound(false);
+    setIsThinking(false);
+    isAITurnRunning.current = false;
     resultOpacity.value = 0;
     resultScale.value = 0.8;
   };
 
   const handleCellPress = async (index: number) => {
-    if (state.status !== 'playing' || state.currentPlayer !== 'X' || isThinking) return;
+    if (state.status !== 'playing' || state.currentPlayer !== 'X' || isThinking || isAITurnRunning.current) return;
     const { board, phase, selectedIndex, boardSize, winLength, pieceLimit } = state;
+
+    let nextState: Partial<GameState> | null = null;
 
     if (phase === 'placement') {
       if (board[index] !== null) return;
@@ -295,19 +308,20 @@ export default function GameScreen({ navigation }: any) {
       if (!nextBoard) return;
       const winningLine = getWinningLine(nextBoard, boardSize, winLength);
       const winner = winningLine ? 'X' : null;
-      setState(prev => ({
-        ...prev,
+      
+      nextState = {
         board: nextBoard,
-        currentPlayer: 'O',
+        currentPlayer: winner ? 'X' : 'O',
         phase: canPlace(nextBoard, 'O', pieceLimit) ? 'placement' : 'movement',
         status: winner ? 'won' : isDraw(nextBoard, boardSize, winLength) ? 'draw' : 'playing',
         winner,
         winningLine,
-      }));
+      };
     } else {
       if (selectedIndex === null) {
         if (board[index] !== 'X') return;
         setState(prev => ({ ...prev, selectedIndex: index }));
+        return;
       } else {
         if (selectedIndex === index) { setState(prev => ({ ...prev, selectedIndex: null })); return; }
         if (board[index] === 'X') { setState(prev => ({ ...prev, selectedIndex: index })); return; }
@@ -316,17 +330,28 @@ export default function GameScreen({ navigation }: any) {
         if (!nextBoard) return;
         const winningLine = getWinningLine(nextBoard, boardSize, winLength);
         const winner = winningLine ? 'X' : null;
-        setState(prev => ({
-          ...prev,
+        
+        nextState = {
           board: nextBoard,
-          currentPlayer: 'O',
+          currentPlayer: winner ? 'X' : 'O',
           phase: canPlace(nextBoard, 'O', pieceLimit) ? 'placement' : 'movement',
           status: winner ? 'won' : isDraw(nextBoard, boardSize, winLength) ? 'draw' : 'playing',
           winner,
           winningLine,
           selectedIndex: null,
-        }));
+        };
       }
+    }
+
+    if (nextState) {
+      setState(prev => {
+        const merged = { ...prev, ...nextState };
+        // Trigger AI only if game still active and turn shifted to O
+        if (merged.status === 'playing' && merged.currentPlayer === 'O') {
+          triggerAI();
+        }
+        return merged;
+      });
     }
   };
 
