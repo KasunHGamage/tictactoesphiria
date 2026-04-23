@@ -138,3 +138,16 @@ export function getWinningLine(board: Board, size: number = 3, winLength: number
 export function isDraw(board: Board, size: number = 3, winLength: number = 3): boolean {
   return board.every((c: CellValue) => c !== null) && checkWinner(board, size, winLength) === null;
 }
+
+export interface GameConfig {
+  boardSize: number;
+  winLength: number;
+  pieceLimit: number;
+}
+
+export function getGameConfig(roundNumber: number): GameConfig {
+  if (roundNumber >= 3) {
+    return { boardSize: 4, winLength: 4, pieceLimit: 4 };
+  }
+  return { boardSize: 3, winLength: 3, pieceLimit: 3 };
+}

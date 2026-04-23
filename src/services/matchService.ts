@@ -6,7 +6,7 @@ import { db } from './firebase';
 import { MatchDocument, MatchStatus, MovePayload, PlayerInfo } from './matchTypes';
 import { Board, Player } from '../game/gameTypes';
 import { 
-  createBoard, placePiece, movePiece, checkWinner, canPlace, getWinningLine 
+  createBoard, placePiece, movePiece, checkWinner, canPlace, getWinningLine, getGameConfig 
 } from '../game/gameEngine';
 
 const matchRef = (id: string) => doc(db, 'matches', id);
@@ -127,24 +127,15 @@ export async function startNextRound(matchId: string): Promise<void> {
     if (data.status !== 'finished') return;
 
     const nextRound = data.roundNumber + 1;
-    let size = 3;
-    let winLen = 3;
-    let pieceLimit = 3;
-
-    if (nextRound >= 3 && nextRound <= 4) {
-      size = 4; winLen = 4; pieceLimit = 4;
-    } else if (nextRound >= 5) {
-      size = 5; winLen = 4; pieceLimit = 4; // pieceLimit = winLen
-    }
-
+    const config = getGameConfig(nextRound);
 
     tx.update(matchRef(matchId), {
-      board: createBoard(size),
-      boardSize: size,
-      winLength: winLen,
-      pieceLimit: pieceLimit,
+      board: createBoard(config.boardSize),
+      boardSize: config.boardSize,
+      winLength: config.winLength,
+      pieceLimit: config.pieceLimit,
       roundNumber: nextRound,
-      currentPlayer: 'X', // Or alternate? Let's keep it simple
+      currentPlayer: 'X', 
       phase: 'placement',
       status: 'active',
       winner: null,

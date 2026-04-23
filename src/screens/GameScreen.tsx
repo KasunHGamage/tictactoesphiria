@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { GamePhase, GameState, Player, Board } from '../game/gameTypes';
 import {
   canPlace, checkWinner, createBoard, getPlayerPieces,
-  isDraw, movePiece, placePiece, getWinningLine
+  isDraw, movePiece, placePiece, getWinningLine, getGameConfig
 } from '../game/gameEngine';
 import { getAIMove, AIDifficulty } from '../game/aiEngine';
 import { AuthContext } from '../auth/AuthContext';
@@ -259,16 +259,14 @@ export default function GameScreen({ navigation }: any) {
 
   const startNextRound = () => {
     const nextR = roundNumber + 1;
-    let size = 3, winLen = 3, pieceLimit = 3;
-    if (nextR >= 3 && nextR <= 4) { size = 4; winLen = 4; pieceLimit = 4; }
-    else if (nextR >= 5) { size = 5; winLen = 4; pieceLimit = 4; }
+    const config = getGameConfig(nextR);
 
     setRoundNumber(nextR);
     setState({
-      board: createBoard(size),
-      boardSize: size,
-      winLength: winLen,
-      pieceLimit: pieceLimit,
+      board: createBoard(config.boardSize),
+      boardSize: config.boardSize,
+      winLength: config.winLength,
+      pieceLimit: config.pieceLimit,
       currentPlayer: 'X',
       phase: 'placement',
       status: 'playing',
