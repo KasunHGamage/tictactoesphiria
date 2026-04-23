@@ -12,7 +12,7 @@ import * as Haptics from 'expo-haptics';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { Ionicons } from '@expo/vector-icons';
 import { Board, Player } from '../game/gameTypes';
-import { checkWinner, canPlace, getWinningLine } from '../game/gameEngine';
+import { checkWinner, canPlace, getWinningLine, getPlayerPieces } from '../game/gameEngine';
 import { useMatch } from '../hooks/useMatch';
 import { recordMatchResult } from '../services/userService';
 import { startNextRound } from '../services/matchService';
@@ -285,9 +285,9 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
     : status === 'waiting' ? 'Waiting for opponent…'
     : status === 'finished' ? (isWinner ? 'Victory!' : isLoser ? 'Defeat' : 'Draw')
     : myTurn
-      ? phase === 'placement' ? 'Your Turn'
+      ? phase === 'placement' ? `Place Piece (${getPlayerPieces(board, playerSide).length}/${pieceLimit})`
         : selectedIdx === null ? 'Select Piece'
-        : 'Move Piece'
+        : 'Move to Target'
     : `${opponentName}'s turn…`;
 
   const animatedBoardStyle = useAnimatedStyle(() => ({
@@ -338,6 +338,27 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
               <Text style={ms.name} numberOfLines={1}>{opponentName}</Text>
             </View>
           </View>
+
+          {/* Dynamic Instruction Card */}
+          {status === 'active' && (
+            <View style={ms.instructionCard}>
+              <View style={ms.instrRow}>
+                <Text style={ms.instrEmoji}>🎯</Text>
+                <Text style={ms.instrLabel}>Goal: {winLength} in a row</Text>
+              </View>
+              <View style={ms.instrRow}>
+                <Text style={ms.instrEmoji}>📦</Text>
+                <Text style={ms.instrLabel}>Pieces: {getPlayerPieces(board, playerSide).length} / {pieceLimit}</Text>
+              </View>
+              <View style={ms.instrHintBox}>
+                <Text style={ms.instrHintTxt}>
+                  {phase === 'placement' 
+                    ? `👉 Place ${pieceLimit - getPlayerPieces(board, playerSide).length} more piece${pieceLimit - getPlayerPieces(board, playerSide).length > 1 ? 's' : ''}`
+                    : '👉 Select a piece to move'}
+                </Text>
+              </View>
+            </View>
+          )}
 
           {/* Main Board */}
           <Animated.View style={[ms.boardContainer, animatedBoardStyle]}>
@@ -439,4 +460,11 @@ const ms = StyleSheet.create({
   xpBadge: { backgroundColor: '#FFD70022', borderColor: C.gold, borderWidth: 1, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 15, marginBottom: 15 },
   xpTxt: { color: C.gold, fontWeight: '900', fontSize: 18 },
   nextRoundTxt: { color: C.textSecondary, fontSize: 14, fontWeight: '600' },
+
+  instructionCard: { width: '90%', backgroundColor: C.card, borderRadius: 20, padding: 15, marginBottom: 20, borderWidth: 1, borderColor: C.border },
+  instrRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
+  instrEmoji: { fontSize: 18, marginRight: 10 },
+  instrLabel: { color: C.textPrimary, fontSize: 14, fontWeight: '700' },
+  instrHintBox: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.border },
+  instrHintTxt: { color: C.accentGlow, fontSize: 14, fontWeight: '800' },
 });

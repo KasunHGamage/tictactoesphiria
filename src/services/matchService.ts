@@ -134,8 +134,9 @@ export async function startNextRound(matchId: string): Promise<void> {
     if (nextRound >= 3 && nextRound <= 4) {
       size = 4; winLen = 4; pieceLimit = 4;
     } else if (nextRound >= 5) {
-      size = 5; winLen = 4; pieceLimit = 5;
+      size = 5; winLen = 4; pieceLimit = 4; // pieceLimit = winLen
     }
+
 
     tx.update(matchRef(matchId), {
       board: createBoard(size),
