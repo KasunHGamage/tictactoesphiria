@@ -288,110 +288,120 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
   }));
 
   return (
-    <SafeAreaView style={ms.safe}>
-      <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+    <View style={ms.root}>
+      <SafeAreaView style={ms.safe}>
+        <StatusBar barStyle="light-content" backgroundColor={C.bg} />
 
-      {/* Confetti on Win */}
-      {showConfetti && <ConfettiCannon count={200} origin={{ x: W / 2, y: -20 }} fallSpeed={3000} fadeOut={true} />}
-
-      <ScrollView 
-        contentContainerStyle={ms.scroll} 
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <View style={ms.header}>
-          <Pressable onPress={() => navigation.goBack()} style={ms.backBtn}>
-            <Ionicons name="chevron-back" size={24} color={C.accentGlow} />
-          </Pressable>
-          <Text style={ms.matchCode}>{matchId}</Text>
-          {status === 'active' && (
-            <Pressable onPress={handleResign} style={ms.resignBtn}>
-              <Text style={ms.resignTxt}>Resign</Text>
+        <ScrollView 
+          contentContainerStyle={ms.scroll} 
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Header */}
+          <View style={ms.header}>
+            <Pressable onPress={() => navigation.goBack()} style={ms.backBtn}>
+              <Ionicons name="chevron-back" size={24} color={C.accentGlow} />
             </Pressable>
-          )}
-        </View>
-
-        {/* Players Section */}
-        <View style={ms.players}>
-          <View style={[
-            ms.playerTag, 
-            { borderColor: playerSide === 'X' ? C.xColor : C.oColor },
-            isWinner && ms.winnerTag
-          ]}>
-            {isWinner && <Text style={ms.crown}>👑</Text>}
-            <Text style={[ms.playerSymbol, { color: playerSide === 'X' ? C.xColor : C.oColor }]}>{playerSide}</Text>
-            <Text style={ms.playerName} numberOfLines={1}>{myName}</Text>
-            <Text style={ms.youLabel}>(you)</Text>
+            <Text style={ms.matchCode}>{matchId}</Text>
+            {status === 'active' && (
+              <Pressable onPress={handleResign} style={ms.resignBtn}>
+                <Text style={ms.resignTxt}>Resign</Text>
+              </Pressable>
+            )}
           </View>
-          <Text style={ms.vsText}>VS</Text>
-          <View style={[
-            ms.playerTag, 
-            { borderColor: opponentSide === 'X' ? C.xColor : C.oColor },
-            isLoser && ms.winnerTag
-          ]}>
-            {isLoser && <Text style={ms.crown}>👑</Text>}
-            <Text style={[ms.playerSymbol, { color: opponentSide === 'X' ? C.xColor : C.oColor }]}>{opponentSide}</Text>
-            <Text style={ms.playerName} numberOfLines={1}>{opponentName}</Text>
-          </View>
-        </View>
 
-        {/* Main Board */}
-        <Animated.View style={[ms.boardContainer, animatedBoardStyle]}>
-          <View style={ms.board}>
-            {board.map((cell, idx) => (
-              <Cell key={idx} index={idx} value={cell}
-                isSelected={selectedIdx === idx} isWinCell={winSet.has(idx)}
-                isOtherDimmed={!!winner}
-                fontSize={FONT} disabled={!myTurn || status !== 'active'}
-                onPress={handleCell} />
-            ))}
-            {/* Strike Line */}
-            <StrikeLine winLine={winningLine} boardWidth={BOARD_WIDTH} />
-          </View>
-        </Animated.View>
-
-        {/* Turn Indicator */}
-        {status === 'active' && (
-          <View style={ms.turnIndicatorContainer}>
-            <View style={[ms.activeStatus, myTurn && ms.myTurnGlow]}>
-              <Text style={[ms.statusTxt, { color: myTurn ? C.accentGlow : C.textSecondary }]}>
-                {statusLabel}
-              </Text>
-              {error && <Text style={ms.errorTxt}>{error}</Text>}
-              <View style={ms.phaseTag}>
-                <Text style={ms.phaseTxt}>{phase === 'placement' ? '📍 Placement' : '🔄 Movement'}</Text>
-              </View>
+          {/* Players Section */}
+          <View style={ms.players}>
+            <View style={[
+              ms.playerTag, 
+              { borderColor: playerSide === 'X' ? C.xColor : C.oColor },
+              isWinner && ms.winnerTag
+            ]}>
+              {isWinner && <Text style={ms.crown}>👑</Text>}
+              <Text style={[ms.playerSymbol, { color: playerSide === 'X' ? C.xColor : C.oColor }]}>{playerSide}</Text>
+              <Text style={ms.playerName} numberOfLines={1}>{myName}</Text>
+              <Text style={ms.youLabel}>(you)</Text>
+            </View>
+            <Text style={ms.vsText}>VS</Text>
+            <View style={[
+              ms.playerTag, 
+              { borderColor: opponentSide === 'X' ? C.xColor : C.oColor },
+              isLoser && ms.winnerTag
+            ]}>
+              {isLoser && <Text style={ms.crown}>👑</Text>}
+              <Text style={[ms.playerSymbol, { color: opponentSide === 'X' ? C.xColor : C.oColor }]}>{opponentSide}</Text>
+              <Text style={ms.playerName} numberOfLines={1}>{opponentName}</Text>
             </View>
           </View>
-        )}
 
-        {/* Result Overlay */}
-        {status === 'finished' && (
-          <View style={ms.resultWrapper}>
-            <Animated.View style={[ms.resultBanner, animatedResultStyle]}>
-              <Text style={[
-                ms.resultTitle, 
-                { color: isWinner ? C.gold : isLoser ? C.xColor : C.textPrimary }
-              ]}>
-                {isWinner ? 'YOU WIN!' : isLoser ? 'GAME OVER' : 'DRAW'}
-              </Text>
-              <Text style={ms.resultSub}>
-                {isWinner ? 'A legendary victory!' : isLoser ? 'Better luck next time.' : 'Equal match!'}
-              </Text>
-              
-              <Pressable style={ms.playAgainBtn} onPress={() => navigation.goBack()}>
-                <Text style={ms.playAgainTxt}>Play Again</Text>
-              </Pressable>
-            </Animated.View>
-          </View>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+          {/* Main Board */}
+          <Animated.View style={[ms.boardContainer, animatedBoardStyle]}>
+            <View style={ms.board}>
+              {board.map((cell, idx) => (
+                <Cell key={idx} index={idx} value={cell}
+                  isSelected={selectedIdx === idx} isWinCell={winSet.has(idx)}
+                  isOtherDimmed={!!winner}
+                  fontSize={FONT} disabled={!myTurn || status !== 'active'}
+                  onPress={handleCell} />
+              ))}
+              {/* Strike Line */}
+              <StrikeLine winLine={winningLine} boardWidth={BOARD_WIDTH} />
+            </View>
+          </Animated.View>
+
+          {/* Turn Indicator */}
+          {status === 'active' && (
+            <View style={ms.turnIndicatorContainer}>
+              <View style={[ms.activeStatus, myTurn && ms.myTurnGlow]}>
+                <Text style={[ms.statusTxt, { color: myTurn ? C.accentGlow : C.textSecondary }]}>
+                  {statusLabel}
+                </Text>
+                {error && <Text style={ms.errorTxt}>{error}</Text>}
+                <View style={ms.phaseTag}>
+                  <Text style={ms.phaseTxt}>{phase === 'placement' ? '📍 Placement' : '🔄 Movement'}</Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Result Overlay */}
+          {status === 'finished' && (
+            <View style={ms.resultWrapper}>
+              <Animated.View style={[ms.resultBanner, animatedResultStyle]}>
+                <Text style={[
+                  ms.resultTitle, 
+                  { color: isWinner ? C.gold : isLoser ? C.xColor : C.textPrimary }
+                ]}>
+                  {isWinner ? 'YOU WIN!' : isLoser ? 'GAME OVER' : 'DRAW'}
+                </Text>
+                <Text style={ms.resultSub}>
+                  {isWinner ? 'A legendary victory!' : isLoser ? 'Better luck next time.' : 'Equal match!'}
+                </Text>
+                
+                <Pressable style={ms.playAgainBtn} onPress={() => navigation.goBack()}>
+                  <Text style={ms.playAgainTxt}>Play Again</Text>
+                </Pressable>
+              </Animated.View>
+            </View>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+
+      {/* Confetti Overlay — Always on top */}
+      <View pointerEvents="none" style={ms.confettiOverlay}>
+        {showConfetti && <ConfettiCannon count={200} origin={{ x: W / 2, y: -20 }} fallSpeed={3000} fadeOut={true} />}
+      </View>
+    </View>
   );
 }
 
 const ms = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
+  root: { flex: 1, backgroundColor: C.bg },
+  safe: { flex: 1 },
+  confettiOverlay: { 
+    ...StyleSheet.absoluteFillObject, 
+    zIndex: 999, 
+    elevation: 999 
+  },
   scroll: { paddingBottom: 100, alignItems: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', width: '100%', paddingHorizontal: 20, marginTop: 20, marginBottom: 20 },
   backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.card, justifyContent: 'center', alignItems: 'center' },
