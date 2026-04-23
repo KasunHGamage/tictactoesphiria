@@ -8,7 +8,7 @@ import {
   ActivityIndicator, RefreshControl, Image 
 } from 'react-native';
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
-import { db } from '../multiplayer/firebase';
+import { db } from '../services/firebase';
 import { UserProfile } from '../services/userService';
 
 const C = {

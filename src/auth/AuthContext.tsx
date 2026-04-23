@@ -4,7 +4,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../multiplayer/firebase';
+import { auth } from '../services/firebase';
 
 interface AuthContextType {
   user: User | null;

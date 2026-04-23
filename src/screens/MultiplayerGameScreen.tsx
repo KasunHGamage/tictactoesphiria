@@ -4,11 +4,10 @@ import {
   Animated, Platform, Pressable, SafeAreaView, StatusBar,
   StyleSheet, Text, useWindowDimensions, View, Alert,
 } from 'react-native';
-import { AppRoute } from '../multiplayer/multiplayerTypes';
-import { useMatch } from '../hooks/useMatch';
 import { Board, Player } from '../game/gameTypes';
-import { checkWinner } from '../game/gameEngine';
-import { canPlace } from '../game/gameEngine';
+import { checkWinner, canPlace } from '../game/gameEngine';
+import { useMatch } from '../hooks/useMatch';
+import { recordMatchResult } from '../services/userService';
 
 const C = {
   bg: '#0D0D1A', surface: '#14142B', card: '#1C1C3A', border: '#2A2A5A',
@@ -57,13 +56,6 @@ function Cell({ index, value, isSelected, isWinCell, fontSize, disabled, onPress
   );
 }
 
-interface Props {
-  matchId: string;
-  playerSide: Player;
-  myUid: string;
-  myName: string;
-  navigate: (r: AppRoute) => void;
-}
 
 export default function MultiplayerGameScreen({ route, navigation }: any) {
   const { matchId, playerSide, myUid, myName } = route.params;
@@ -85,7 +77,7 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
     if (match?.status === 'finished' && !resultRecorded) {
       setResultRecorded(true);
       const win = winner === playerSide;
-      import('../services/userService').then(s => s.recordMatchResult(myUid, win));
+      recordMatchResult(myUid, win);
     }
   }, [match?.status, winner, playerSide, myUid, resultRecorded]);
 

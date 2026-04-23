@@ -4,15 +4,17 @@
 
 import React, { useEffect, useState } from 'react';
 import { 
-  StyleSheet, Text, View, SafeAreaView, FlatList, 
-  ActivityIndicator, RefreshControl, TextInput, Pressable, Alert, SectionList 
+  StyleSheet, Text, View, SafeAreaView, ActivityIndicator, 
+  TextInput, Pressable, Alert, SectionList 
 } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { getUserByGameId, getUserProfile, UserProfile } from '../services/userService';
 import { 
   sendFriendRequest, acceptFriendRequest, rejectFriendRequest, 
-  listenToRequests, listenToFriends, FriendRequest 
+  listenToRequests, listenToFriends 
 } from '../services/friendsService';
+import { useMatchInvitations } from '../hooks/useMatchInvitations';
+import { MatchInvite } from '../services/matchTypes';
 
 const C = {
   bg: '#0D0D1A', card: '#1C1C3A', border: '#2A2A5A',
@@ -27,18 +29,16 @@ export default function FriendsScreen() {
   const [searching, setSearching] = useState(false);
   
   const [friends, setFriends] = useState<UserProfile[]>([]);
-  const [requests, setRequests] = useState<FriendRequest[]>([]);
+  const [friendRequests, setFriendRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Invitation system hook
+  const { incoming: matchInvites, inviteFriend, accept, reject } = useMatchInvitations(() => {});
 
   useEffect(() => {
     if (!user) return;
 
-    // Listen to friend requests
-    const unsubReqs = listenToRequests(user.uid, (reqs) => {
-      setRequests(reqs);
-    });
-
-    // Listen to friend list
+    const unsubReqs = listenToRequests(user.uid, setFriendRequests);
     const unsubFriends = listenToFriends(user.uid, async (uids) => {
       const profiles = await Promise.all(uids.map(uid => getUserProfile(uid)));
       setFriends(profiles.filter(p => p !== null) as UserProfile[]);
@@ -61,17 +61,11 @@ export default function FriendsScreen() {
       } else if (target.uid === user?.uid) {
         Alert.alert('Nice Try', "You can't add yourself!");
       } else {
-        Alert.alert(
-          'Add Friend', 
-          `Send friend request to ${target.displayName}?`,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Send', onPress: () => sendFriendRequest(user!.uid, user!.displayName!, target.uid) }
-          ]
-        );
+        Alert.alert('Add Friend', `Send friend request to ${target.displayName}?`, [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Send', onPress: () => sendFriendRequest(user!.uid, user!.displayName!, target.uid) }
+        ]);
       }
-    } catch (e) {
-      console.error(e);
     } finally {
       setSearching(false);
       setSearchId('');
@@ -85,13 +79,16 @@ export default function FriendsScreen() {
         <Text style={s.nameText}>{item.displayName}</Text>
         <Text style={s.statusText}>{item.status.toUpperCase()}</Text>
       </View>
-      <Pressable style={s.inviteBtn} onPress={() => Alert.alert('Coming Soon', 'Match invitations will be added in the next step.')}>
+      <Pressable 
+        style={s.inviteBtn} 
+        onPress={() => inviteFriend(item.uid).then(() => Alert.alert('Sent', 'Match invitation sent!'))}
+      >
         <Text style={s.inviteBtnText}>Invite</Text>
       </Pressable>
     </View>
   );
 
-  const renderRequest = ({ item }: { item: FriendRequest }) => (
+  const renderFriendRequest = ({ item }: { item: any }) => (
     <View style={s.item}>
       <View style={s.info}>
         <Text style={s.nameText}>{item.fromName}</Text>
@@ -108,17 +105,31 @@ export default function FriendsScreen() {
     </View>
   );
 
+  const renderMatchInvite = ({ item }: { item: MatchInvite }) => (
+    <View style={[s.item, { borderColor: C.accentGlow, borderWidth: 2 }]}>
+      <View style={s.info}>
+        <Text style={s.nameText}>{item.fromName}</Text>
+        <Text style={[s.statusText, { color: C.accentGlow }]}>MATCH INVITATION</Text>
+      </View>
+      <View style={s.actions}>
+        <Pressable style={[s.actionBtn, s.acceptBtn]} onPress={() => accept(item)}>
+          <Text style={s.actionBtnText}>⚔️</Text>
+        </Pressable>
+        <Pressable style={[s.actionBtn, s.rejectBtn]} onPress={() => reject(item.id)}>
+          <Text style={s.actionBtnText}>✕</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+
   const sections = [
-    ...(requests.length > 0 ? [{ title: 'PENDING REQUESTS', data: requests, type: 'request' }] : []),
+    ...(matchInvites.length > 0 ? [{ title: 'MATCH INVITES', data: matchInvites, type: 'match' }] : []),
+    ...(friendRequests.length > 0 ? [{ title: 'FRIEND REQUESTS', data: friendRequests, type: 'friendReq' }] : []),
     { title: 'FRIENDS', data: friends, type: 'friend' },
   ];
 
   if (loading) {
-    return (
-      <View style={[s.safe, s.center]}>
-        <ActivityIndicator color={C.accent} size="large" />
-      </View>
-    );
+    return <View style={[s.safe, s.center]}><ActivityIndicator color={C.accent} size="large" /></View>;
   }
 
   return (
@@ -127,12 +138,8 @@ export default function FriendsScreen() {
         <Text style={s.title}>Social Hub</Text>
         <View style={s.searchContainer}>
           <TextInput 
-            style={s.searchInput}
-            placeholder="Search by Game ID (6 chars)"
-            placeholderTextColor={C.textSecondary}
-            value={searchId}
-            onChangeText={t => setSearchId(t.toUpperCase())}
-            maxLength={6}
+            style={s.searchInput} placeholder="Search by Game ID" placeholderTextColor={C.textSecondary}
+            value={searchId} onChangeText={t => setSearchId(t.toUpperCase())} maxLength={6}
           />
           <Pressable style={s.searchBtn} onPress={handleSearch} disabled={searching || searchId.length !== 6}>
             {searching ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.searchBtnText}>Add</Text>}
@@ -143,20 +150,17 @@ export default function FriendsScreen() {
       <SectionList
         sections={sections as any}
         keyExtractor={(item, index) => (item as any).id || (item as any).uid || index.toString()}
-        renderItem={({ item, section }) => 
-          (section as any).type === 'request' ? renderRequest({ item: item as FriendRequest }) : renderFriend({ item: item as UserProfile })
-        }
+        renderItem={({ item, section }) => {
+          if (section.type === 'match') return renderMatchInvite({ item: item as MatchInvite });
+          if (section.type === 'friendReq') return renderFriendRequest({ item });
+          return renderFriend({ item: item as UserProfile });
+        }}
         renderSectionHeader={({ section: { title, data } }) => (
           <View style={s.sectionHeader}>
             <Text style={s.sectionTitle}>{title} ({data.length})</Text>
           </View>
         )}
         contentContainerStyle={s.list}
-        ListEmptyComponent={
-          !requests.length && !friends.length ? (
-            <Text style={s.empty}>Your friends list is empty. Add someone by their Game ID!</Text>
-          ) : null
-        }
       />
     </SafeAreaView>
   );
@@ -168,19 +172,13 @@ const s = StyleSheet.create({
   header: { padding: 24, paddingBottom: 16 },
   title: { fontSize: 28, fontWeight: '900', color: C.accentGlow, letterSpacing: 1, marginBottom: 20 },
   searchContainer: { flexDirection: 'row', gap: 10 },
-  searchInput: { 
-    flex: 1, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, 
-    paddingHorizontal: 16, paddingVertical: 12, color: C.textPrimary, fontSize: 14, letterSpacing: 2
-  },
+  searchInput: { flex: 1, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 12, color: C.textPrimary, letterSpacing: 2 },
   searchBtn: { backgroundColor: C.accent, borderRadius: 12, paddingHorizontal: 20, justifyContent: 'center' },
   searchBtnText: { color: '#fff', fontWeight: '800' },
-  list: { paddingHorizontal: 24, paddingBottom: 40 },
+  list: { paddingHorizontal: 24, paddingBottom: 100 }, // space for tab bar
   sectionHeader: { marginTop: 24, marginBottom: 12 },
   sectionTitle: { fontSize: 12, fontWeight: '800', color: C.textSecondary, letterSpacing: 2 },
-  item: { 
-    flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, 
-    borderRadius: 16, padding: 16, marginBottom: 8, borderWidth: 1, borderColor: C.border 
-  },
+  item: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: 16, padding: 16, marginBottom: 8, borderWidth: 1, borderColor: C.border },
   statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12 },
   info: { flex: 1 },
   nameText: { fontSize: 16, fontWeight: '700', color: C.textPrimary },
@@ -192,5 +190,4 @@ const s = StyleSheet.create({
   acceptBtn: { backgroundColor: C.success },
   rejectBtn: { backgroundColor: C.danger },
   actionBtnText: { color: '#fff', fontSize: 18, fontWeight: '900' },
-  empty: { textAlign: 'center', color: C.textSecondary, marginTop: 40, fontSize: 14, lineHeight: 22 },
 });

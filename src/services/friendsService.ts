@@ -14,7 +14,7 @@ import {
   deleteDoc,
   Unsubscribe
 } from 'firebase/firestore';
-import { db } from '../multiplayer/firebase';
+import { db } from './firebase';
 
 export interface FriendRequest {
   id: string;

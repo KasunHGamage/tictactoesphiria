@@ -8,7 +8,7 @@ import {
   signOut, 
   updateProfile 
 } from 'firebase/auth';
-import { auth } from '../multiplayer/firebase';
+import { auth } from './firebase';
 import { createUserProfile } from './userService';
 
 /**

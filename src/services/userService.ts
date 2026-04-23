@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────
 
 import { doc, getDoc, setDoc, query, collection, where, getDocs, serverTimestamp, updateDoc, increment } from 'firebase/firestore';
-import { db } from '../multiplayer/firebase';
+import { db } from './firebase';
 
 export interface UserProfile {
   uid: string;

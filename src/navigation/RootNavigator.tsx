@@ -3,12 +3,13 @@
 // ─────────────────────────────────────────────
 
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, Platform } from 'react-native';
 
 import { useAuth } from '../auth/AuthContext';
+import { useMatchInvitations } from '../hooks/useMatchInvitations';
 import LoginScreen from '../screens/LoginScreen';
 import SignupScreen from '../screens/SignupScreen';
 import HomeScreen from '../screens/HomeScreen';
@@ -19,20 +20,61 @@ import ProfileScreen from '../screens/ProfileScreen';
 import MultiplayerGameScreen from '../screens/MultiplayerGameScreen';
 import GameScreen from '../screens/GameScreen';
 
+import { Ionicons } from '@expo/vector-icons';
+
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+const navigationRef = createNavigationContainerRef();
 
 // ── Tab Navigator ────────────────────────────────────────────────
 
 function MainTabs() {
+  const isIOS = Platform.OS === 'ios';
+
   return (
     <Tab.Navigator
-      screenOptions={{
+      screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarStyle: { backgroundColor: '#0D0D1A', borderTopColor: '#2A2A5A' },
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName: any;
+
+          if (route.name === 'Home') {
+            iconName = focused ? 'home' : 'home-outline';
+          } else if (route.name === 'Play') {
+            iconName = focused ? 'game-controller' : 'game-controller-outline';
+          } else if (route.name === 'Friends') {
+            iconName = focused ? 'people' : 'people-outline';
+          } else if (route.name === 'Leaders') {
+            iconName = focused ? 'trophy' : 'trophy-outline';
+          } else if (route.name === 'Profile') {
+            iconName = focused ? 'person' : 'person-outline';
+          }
+
+          return <Ionicons name={iconName} size={24} color={color} />;
+        },
         tabBarActiveTintColor: '#7C5CFC',
-        tabBarInactiveTintColor: '#8888AA',
-      }}
+        tabBarInactiveTintColor: '#6B7280',
+        tabBarStyle: {
+          backgroundColor: '#0B0F1A',
+          borderTopWidth: 0,
+          height: isIOS ? 88 : 70,
+          paddingBottom: isIOS ? 30 : 12,
+          paddingTop: 12,
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+          position: 'absolute',
+          elevation: 0,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -4 },
+          shadowOpacity: 0.2,
+          shadowRadius: 10,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+          marginTop: 4,
+        },
+      })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Play" component={PlayScreen} />
@@ -48,6 +90,19 @@ function MainTabs() {
 export default function RootNavigator() {
   const { user, loading } = useAuth();
 
+  // Global listener for accepted invitations
+  useMatchInvitations((matchId, playerSide) => {
+    if (navigationRef.isReady() && user) {
+      // @ts-ignore
+      navigationRef.navigate('MultiplayerGame', {
+        matchId,
+        playerSide,
+        myUid: user.uid,
+        myName: user.displayName || 'Player'
+      });
+    }
+  });
+
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: '#0D0D1A', justifyContent: 'center' }}>
@@ -57,7 +112,7 @@ export default function RootNavigator() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
           <>
