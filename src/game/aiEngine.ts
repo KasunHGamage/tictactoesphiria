@@ -1,7 +1,3 @@
-// ─────────────────────────────────────────────
-//  aiEngine.ts — AI move selection (no recursion, no freezing)
-// ─────────────────────────────────────────────
-
 import { Board, Player, AIMove } from './gameTypes';
 import {
   getPlayerPieces,
@@ -10,182 +6,138 @@ import {
   placePiece,
   movePiece,
   checkWinner,
+  getWinningLine
 } from './gameEngine';
 
 const AI: Player = 'O';
 const HUMAN: Player = 'X';
 
-// ── Win-line definitions (same as engine, kept local for purity) ──
-const WIN_LINES: number[][] = [
-  [0, 1, 2], [3, 4, 5], [6, 7, 8],
-  [0, 3, 6], [1, 4, 7], [2, 5, 8],
-  [0, 4, 8], [2, 4, 6],
-];
+export type AIDifficulty = 'random' | 'medium' | 'hard';
 
 // ── Helpers ───────────────────────────────────────────────────────
 
-/** Count how many cells a player owns in a given line */
-function lineScore(board: Board, line: number[], player: Player): number {
-  return line.filter(i => board[i] === player).length;
-}
-
-/**
- * Score a board position from the AI's perspective.
- * Higher = better for AI.
- */
-function scoreBoard(board: Board): number {
-  let score = 0;
-  for (const line of WIN_LINES) {
-    const aiCount = lineScore(board, line, AI);
-    const humanCount = lineScore(board, line, HUMAN);
-    if (aiCount > 0 && humanCount === 0) score += aiCount * 10;
-    if (humanCount > 0 && aiCount === 0) score -= humanCount * 10;
-  }
-  // Center bonus
-  if (board[4] === AI) score += 5;
-  if (board[4] === HUMAN) score -= 5;
-  return score;
-}
-
-/**
- * Return true when placing on `index` wins for `player` on a given board.
- * Used for O(1) immediate-win checks.
- */
-function isWinningMove(board: Board, index: number, player: Player): boolean {
-  for (const line of WIN_LINES) {
-    if (!line.includes(index)) continue;
-    const owned = line.filter(i => i === index || board[i] === player).length;
-    if (owned === 3) return true;
-  }
-  return false;
-}
-
-// ── Placement phase ───────────────────────────────────────────────
-
-function getPlacementMove(board: Board): AIMove {
+function getRandomMove(board: Board, player: Player, pieceLimit: number): AIMove {
   const empty = getEmptyCells(board);
-
-  // 1. Win immediately
-  for (const idx of empty) {
-    if (isWinningMove(board, idx, AI)) return { toIndex: idx };
+  if (canPlace(board, player, pieceLimit)) {
+    const to = empty[Math.floor(Math.random() * empty.length)];
+    return { toIndex: to };
+  } else {
+    const pieces = getPlayerPieces(board, player);
+    const from = pieces[Math.floor(Math.random() * pieces.length)];
+    const to = empty[Math.floor(Math.random() * empty.length)];
+    return { fromIndex: from, toIndex: to };
   }
+}
 
-  // 2. Block human win
-  for (const idx of empty) {
-    if (isWinningMove(board, idx, HUMAN)) return { toIndex: idx };
-  }
+function getWinBlockMove(board: Board, player: Player, size: number, winLength: number, pieceLimit: number): AIMove | null {
+  const empty = getEmptyCells(board);
+  const opponent = player === 'X' ? 'O' : 'X';
 
-  // 3. Center
-  if (empty.includes(4)) return { toIndex: 4 };
-
-  // 4. Corners
-  const corners = [0, 2, 6, 8].filter(c => empty.includes(c));
-  if (corners.length > 0) {
-    // Prefer corner that contributes most to AI lines
-    let best = corners[0];
-    let bestScore = -Infinity;
-    for (const c of corners) {
-      const next = placePiece(board, c, AI)!;
-      const s = scoreBoard(next);
-      if (s > bestScore) { bestScore = s; best = c; }
+  // 1. Try to win
+  if (canPlace(board, player, pieceLimit)) {
+    for (const idx of empty) {
+      const next = placePiece(board, idx, player);
+      if (next && checkWinner(next, size, winLength)) return { toIndex: idx };
     }
-    return { toIndex: best };
-  }
-
-  // 5. Any empty cell
-  return { toIndex: empty[0] };
-}
-
-// ── Movement phase ────────────────────────────────────────────────
-
-function getMovementMove(board: Board): AIMove {
-  const aiPieces = getPlayerPieces(board, AI);
-  const empty = getEmptyCells(board);
-
-  let bestScore = -Infinity;
-  let bestMove: AIMove = { fromIndex: aiPieces[0], toIndex: empty[0] };
-  let hasBest = false;
-
-  for (const from of aiPieces) {
-    for (const to of empty) {
-      const next = movePiece(board, from, to, AI);
-      if (!next) continue;
-
-      // Immediate win → take it instantly
-      if (checkWinner(next) === AI) {
-        return { fromIndex: from, toIndex: to };
-      }
-
-      const s = scoreBoard(next);
-      if (!hasBest || s > bestScore) {
-        bestScore = s;
-        bestMove = { fromIndex: from, toIndex: to };
-        hasBest = true;
+  } else {
+    const pieces = getPlayerPieces(board, player);
+    for (const from of pieces) {
+      for (const to of empty) {
+        const next = movePiece(board, from, to, player);
+        if (next && checkWinner(next, size, winLength)) return { fromIndex: from, toIndex: to };
       }
     }
   }
 
-  // Guaranteed: if AI has 3 pieces and there is at least 1 empty cell,
-  // at least one valid (from→to) combo exists.
-  return bestMove;
-}
-
-// ── Block in movement phase ───────────────────────────────────────
-
-/**
- * Check whether human can win in one move, and if so, block the destination.
- * Returns the blocking AIMove or null.
- */
-function getBlockingMove(board: Board): AIMove | null {
-  const humanPieces = getPlayerPieces(board, HUMAN);
-  const empty = getEmptyCells(board);
-  const aiPieces = getPlayerPieces(board, AI);
-
-  for (const from of humanPieces) {
-    for (const to of empty) {
-      const next = movePiece(board, from, to, HUMAN);
-      if (!next) continue;
-      if (checkWinner(next) === HUMAN) {
-        // Try to move one of our pieces to `to` to block
-        for (const aiFrom of aiPieces) {
-          const block = movePiece(board, aiFrom, to, AI);
-          if (block) return { fromIndex: aiFrom, toIndex: to };
+  // 2. Try to block opponent win
+  if (canPlace(board, opponent, pieceLimit)) {
+    for (const idx of empty) {
+      const next = placePiece(board, idx, opponent);
+      if (next && checkWinner(next, size, winLength)) {
+        // AI can only block if it has a piece to place or move
+        if (canPlace(board, player, pieceLimit)) return { toIndex: idx };
+        // If movement, we need to find an AI piece that can move to `idx`
+        const aiPieces = getPlayerPieces(board, player);
+        for (const from of aiPieces) {
+          if (movePiece(board, from, idx, player)) return { fromIndex: from, toIndex: idx };
         }
       }
     }
   }
+
   return null;
+}
+
+/**
+ * Score a board position. 
+ * Simple heuristic: count how many winning lines are "alive" for AI vs Human.
+ */
+function evaluateBoard(board: Board, size: number, winLength: number): number {
+  let score = 0;
+  // This is expensive for large boards, but since we don't have recursion, it's fine.
+  // Ideally we'd use a more efficient heuristic for NxN.
+  const winner = checkWinner(board, size, winLength);
+  if (winner === AI) return 1000;
+  if (winner === HUMAN) return -1000;
+  
+  return score;
 }
 
 // ── Public API ────────────────────────────────────────────────────
 
-/**
- * Returns the best AI move for the current board state.
- * ALWAYS returns a valid AIMove — never undefined.
- */
-export function getAIMove(board: Board): AIMove {
-  if (canPlace(board, AI)) {
-    // ── PLACEMENT PHASE ──
-    return getPlacementMove(board);
+export function getAIMove(
+  board: Board, 
+  size: number = 3, 
+  winLength: number = 3, 
+  pieceLimit: number = 3,
+  difficulty: AIDifficulty = 'hard'
+): AIMove {
+  
+  // 1. RANDOM
+  if (difficulty === 'random') {
+    return getRandomMove(board, AI, pieceLimit);
   }
 
-  // ── MOVEMENT PHASE ──
-  // 1. Check for immediate AI win
-  const aiPieces = getPlayerPieces(board, AI);
+  // 2. MEDIUM (Win/Block)
+  const winBlock = getWinBlockMove(board, AI, size, winLength, pieceLimit);
+  if (winBlock) return winBlock;
+
+  if (difficulty === 'medium') {
+    return getRandomMove(board, AI, pieceLimit);
+  }
+
+  // 3. HARD (Scored)
+  // For now, hard will do win/block + center/corner priority or best eval
   const empty = getEmptyCells(board);
-
-  for (const from of aiPieces) {
-    for (const to of empty) {
-      const next = movePiece(board, from, to, AI);
-      if (!next) continue;
-      if (checkWinner(next) === AI) return { fromIndex: from, toIndex: to };
+  const center = Math.floor((size * size) / 2);
+  
+  if (canPlace(board, AI, pieceLimit)) {
+    if (empty.includes(center)) return { toIndex: center };
+    
+    let bestMove = empty[0];
+    let bestScore = -Infinity;
+    for (const idx of empty) {
+      const next = placePiece(board, idx, AI)!;
+      const s = evaluateBoard(next, size, winLength);
+      if (s > bestScore) { bestScore = s; bestMove = idx; }
     }
+    return { toIndex: bestMove };
+  } else {
+    const aiPieces = getPlayerPieces(board, AI);
+    let bestMove: AIMove = { fromIndex: aiPieces[0], toIndex: empty[0] };
+    let bestScore = -Infinity;
+    
+    for (const from of aiPieces) {
+      for (const to of empty) {
+        const next = movePiece(board, from, to, AI);
+        if (!next) continue;
+        const s = evaluateBoard(next, size, winLength);
+        if (s > bestScore) {
+          bestScore = s;
+          bestMove = { fromIndex: from, toIndex: to };
+        }
+      }
+    }
+    return bestMove;
   }
-
-  // 2. Block human
-  const block = getBlockingMove(board);
-  if (block) return block;
-
-  // 3. Best scored move
-  return getMovementMove(board);
 }

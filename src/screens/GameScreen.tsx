@@ -1,62 +1,154 @@
-// ─────────────────────────────────────────────
-//  GameScreen.tsx — Full game UI + state machine
-//  Layout: percentage-based, aspectRatio cells
-// ─────────────────────────────────────────────
-
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useContext } from 'react';
 import {
-  Animated,
-  Platform,
-  Pressable,
-  SafeAreaView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
+  Platform, Pressable, SafeAreaView, StatusBar,
+  StyleSheet, Text, useWindowDimensions, View, Alert, ScrollView
 } from 'react-native';
+import Animated, { 
+  useSharedValue, useAnimatedStyle, withTiming, withSequence, 
+  withDelay, withRepeat, Easing, useDerivedValue 
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
+import ConfettiCannon from 'react-native-confetti-cannon';
+import { Ionicons } from '@expo/vector-icons';
 
 import { GamePhase, GameState, Player, Board } from '../game/gameTypes';
 import {
-  canPlace,
-  checkWinner,
-  createBoard,
-  getPlayerPieces,
-  isDraw,
-  movePiece,
-  placePiece,
-  getWinningLine,
+  canPlace, checkWinner, createBoard, getPlayerPieces,
+  isDraw, movePiece, placePiece, getWinningLine
 } from '../game/gameEngine';
-import { getAIMove } from '../game/aiEngine';
+import { getAIMove, AIDifficulty } from '../game/aiEngine';
+import { AuthContext } from '../auth/AuthContext';
+import { recordMatchResult, getUserProfile } from '../services/userService';
 
 // ── Colors ────────────────────────────────────────────────────────
 
 const C = {
-  bg: '#0D0D1A',
-  surface: '#14142B',
-  card: '#1C1C3A',
-  border: '#2A2A5A',
-  accent: '#7C5CFC',
-  accentGlow: '#9B7DFF',
-  accentDim: '#3D2E7C',
-  xColor: '#FF6B8A',
-  xGlow: '#FF4D73',
-  oColor: '#4FC3F7',
-  oGlow: '#29B6F6',
-  textSecondary: '#8888AA',
-  selected: '#FFD700',
-  selectedBg: '#3A3000',
-  winCell: '#2A2600',
+  bg: '#0D0D1A', surface: '#14142B', card: '#1C1C3A', border: '#2A2A5A',
+  accent: '#7C5CFC', accentGlow: '#9B7DFF', accentDim: '#3D2E7C',
+  xColor: '#FF6B8A', xGlow: '#FF4D73', oColor: '#4FC3F7', oGlow: '#29B6F6',
+  textPrimary: '#F0F0FF', textSecondary: '#8888AA',
+  selected: '#FFD700', selectedBg: '#3A3000', winCell: '#FFD700',
+  gold: '#FFD700',
 };
 
-// ── Win lines (for highlight) ─────────────────────────────────────
+// ── Bot Definitions ───────────────────────────────────────────────
 
+const BOTS = [
+  { name: 'Nova 🤖', level: 1, difficulty: 'random' as AIDifficulty },
+  { name: 'Titan ⚡', level: 4, difficulty: 'medium' as AIDifficulty },
+  { name: 'Phantom 🧠', level: 7, difficulty: 'hard' as AIDifficulty },
+];
 
+function getBotForLevel(level: number) {
+  if (level >= 7) return BOTS[2];
+  if (level >= 4) return BOTS[1];
+  return BOTS[0];
+}
 
-// ── Helpers ───────────────────────────────────────────────────────
+// ── Components ────────────────────────────────────────────────────
 
-function createInitialState(): GameState {
-  return {
+function StrikeLine({ winLine, layouts, boardSize }: { winLine: number[] | null, layouts: Record<number, any>, boardSize: number }) {
+  const progress = useSharedValue(0);
+  const winLineValue = useDerivedValue(() => winLine);
+
+  useEffect(() => {
+    if (winLine) {
+      progress.value = withDelay(200, withTiming(1, { duration: 450, easing: Easing.out(Easing.quad) }));
+    } else {
+      progress.value = 0;
+    }
+  }, [winLine]);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    const line = winLineValue.value;
+    if (!line || !layouts[line[0]] || !layouts[line[line.length - 1]]) return { opacity: 0 };
+
+    const start = layouts[line[0]];
+    const end = layouts[line[line.length - 1]];
+
+    const startX = start.x + start.w / 2;
+    const startY = start.y + start.h / 2;
+    const endX = end.x + end.w / 2;
+    const endY = end.y + end.h / 2;
+
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx);
+
+    return {
+      position: 'absolute',
+      top: startY - 3,
+      left: startX,
+      width: length,
+      height: 6,
+      backgroundColor: C.gold,
+      borderRadius: 4,
+      zIndex: 20,
+      opacity: 1,
+      transform: [
+        { rotate: `${angle}rad` },
+        { scaleX: progress.value }
+      ],
+      transformOrigin: 'left',
+    };
+  });
+
+  return <Animated.View style={animatedStyle} />;
+}
+
+function Cell({ index, value, isSelected, isWinCell, boardSize, fontSize, disabled, onPress, onLayout }: any) {
+  const scale = useSharedValue(1);
+  const pulse = useSharedValue(1);
+
+  const handleLayout = (e: any) => {
+    const { x, y, width, height } = e.nativeEvent.layout;
+    onLayout(index, { x, y, w: width, h: height });
+  };
+
+  useEffect(() => {
+    if (isWinCell) {
+      pulse.value = withRepeat(withSequence(withTiming(1.12, { duration: 600 }), withTiming(1, { duration: 600 })), -1, true);
+    } else {
+      pulse.value = 1;
+    }
+  }, [isWinCell]);
+
+  const animatedCellInner = useAnimatedStyle(() => ({
+    transform: [{ scale: isWinCell ? pulse.value : scale.value }],
+    borderColor: isWinCell ? C.gold : isSelected ? C.gold : C.border,
+    backgroundColor: isSelected ? C.selectedBg : isWinCell ? '#2A2600' : C.card,
+  }));
+
+  const handle = () => {
+    if (disabled) return;
+    scale.value = withSequence(withTiming(0.84, { duration: 70 }), withTiming(1, { duration: 110 }));
+    onPress(index);
+  };
+
+  const color = value === 'X' ? C.xColor : C.oColor;
+  return (
+    <Pressable onLayout={handleLayout} onPress={handle} style={{ flexBasis: `${100/boardSize}%`, aspectRatio: 1 }}>
+      <Animated.View style={[styles.cellInner, animatedCellInner]}>
+        {value && <Text style={{ fontSize, fontWeight: '900', color }}>{value === 'X' ? '✕' : '○'}</Text>}
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// ── Main Screen ───────────────────────────────────────────────────
+
+export default function GameScreen({ navigation }: any) {
+  const { user } = useContext(AuthContext);
+  const { width: W } = useWindowDimensions();
+  const BOARD_WIDTH = W * 0.9;
+
+  const [roundNumber, setRoundNumber] = useState(1);
+  const [winStreak, setWinStreak] = useState(0);
+  const [xp, setXp] = useState(0);
+  const [level, setLevel] = useState(1);
+  
+  const [state, setState] = useState<GameState>(() => ({
     board: createBoard(3),
     boardSize: 3,
     winLength: 3,
@@ -65,474 +157,309 @@ function createInitialState(): GameState {
     phase: 'placement',
     status: 'playing',
     winner: null,
+    winningLine: null,
     selectedIndex: null,
+  }));
+
+  const [tileLayouts, setTileLayouts] = useState<Record<number, any>>({});
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [xpGained, setXpGained] = useState<number | null>(null);
+  const [isProcessingRound, setIsProcessingRound] = useState(false);
+
+  const boardScale = useSharedValue(1);
+  const resultScale = useSharedValue(0.8);
+  const resultOpacity = useSharedValue(0);
+
+  // Sync user profile
+  useEffect(() => {
+    if (user?.uid) {
+      getUserProfile(user.uid).then(profile => {
+        if (profile) {
+          setXp(profile.xp || 0);
+          setLevel(profile.level || 1);
+        }
+      });
+    }
+  }, [user?.uid]);
+
+  const bot = getBotForLevel(level);
+
+  // AI Turn Logic
+  useEffect(() => {
+    if (state.status === 'playing' && state.currentPlayer === 'O') {
+      const timer = setTimeout(() => {
+        const move = getAIMove(state.board, state.boardSize, state.winLength, state.pieceLimit, bot.difficulty);
+        let nextBoard: Board | null;
+        if (move.fromIndex !== undefined) {
+          nextBoard = movePiece(state.board, move.fromIndex, move.toIndex, 'O');
+        } else {
+          nextBoard = placePiece(state.board, move.toIndex, 'O');
+        }
+
+        if (nextBoard) {
+          const winningLine = getWinningLine(nextBoard, state.boardSize, state.winLength);
+          const winner = winningLine ? 'O' : null;
+          const draw = !winner && isDraw(nextBoard, state.boardSize, state.winLength);
+
+          setState(prev => ({
+            ...prev,
+            board: nextBoard!,
+            currentPlayer: 'X',
+            phase: canPlace(nextBoard!, 'X', state.pieceLimit) ? 'placement' : 'movement',
+            status: winner ? 'won' : draw ? 'draw' : 'playing',
+            winner: winner ?? null,
+            winningLine: winningLine ?? null,
+            selectedIndex: null,
+          }));
+        }
+      }, 600 + Math.random() * 400);
+      return () => clearTimeout(timer);
+    }
+  }, [state.status, state.currentPlayer, state.board, state.boardSize, state.winLength, state.pieceLimit, bot.difficulty]);
+
+  // Round End Lifecycle
+  useEffect(() => {
+    if (state.status !== 'playing' && !isProcessingRound) {
+      setIsProcessingRound(true);
+      const isWinner = state.winner === 'X';
+      const isLoser = state.winner === 'O';
+
+      if (isWinner) {
+        setShowConfetti(true);
+        setWinStreak(prev => prev + 1);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        setWinStreak(0);
+        if (isLoser) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+
+      const xpG = (isWinner ? 50 : state.status === 'draw' ? 30 : 20) + (isWinner ? winStreak * 10 : 0);
+      setXpGained(xpG);
+
+      if (user?.uid) {
+        recordMatchResult(user.uid, isWinner, isWinner ? winStreak + 1 : 0).then(() => {
+          getUserProfile(user.uid).then(p => {
+            if (p) {
+              setXp(p.xp);
+              setLevel(p.level);
+            }
+          });
+        });
+      }
+
+      resultOpacity.value = withTiming(1, { duration: 400 });
+      resultScale.value = withTiming(1, { duration: 500, easing: Easing.out(Easing.back(1.5)) });
+
+      // Auto start next round
+      setTimeout(() => {
+        startNextRound();
+      }, 3000);
+    }
+  }, [state.status, state.winner]);
+
+  const startNextRound = () => {
+    const nextR = roundNumber + 1;
+    let size = 3, winLen = 3, pieceLimit = 3;
+    if (nextR >= 3 && nextR <= 4) { size = 4; winLen = 4; pieceLimit = 4; }
+    else if (nextR >= 5) { size = 5; winLen = 4; pieceLimit = 4; }
+
+    setRoundNumber(nextR);
+    setState({
+      board: createBoard(size),
+      boardSize: size,
+      winLength: winLen,
+      pieceLimit: pieceLimit,
+      currentPlayer: 'X',
+      phase: 'placement',
+      status: 'playing',
+      winner: null,
+      winningLine: null,
+      selectedIndex: null,
+    });
+    setTileLayouts({});
+    setShowConfetti(false);
+    setXpGained(null);
+    setIsProcessingRound(false);
+    resultOpacity.value = 0;
+    resultScale.value = 0.8;
   };
-}
 
-function derivePhase(board: ReturnType<typeof createBoard>, player: Player): GamePhase {
-  return canPlace(board, player) ? 'placement' : 'movement';
-}
+  const handleCellPress = async (index: number) => {
+    if (state.status !== 'playing' || state.currentPlayer !== 'X') return;
+    const { board, phase, selectedIndex, boardSize, winLength, pieceLimit } = state;
 
-function getWinCells(board: Board, size: number, winLength: number): Set<number> {
-  const line = getWinningLine(board, size, winLength);
-  return new Set(line || []);
-}
-
-// ── Cell ──────────────────────────────────────────────────────────
-// Uses width:'33.33%' + aspectRatio:1 — no fixed pixels.
-
-interface CellProps {
-  index: number;
-  value: Player | null;
-  isSelected: boolean;
-  isWinCell: boolean;
-  fontSize: number;
-  onPress: (index: number) => void;
-}
-
-function Cell({ index, value, isSelected, isWinCell, fontSize, onPress }: CellProps) {
-  const scale = useRef(new Animated.Value(1)).current;
-
-  const handlePress = () => {
-    Animated.sequence([
-      Animated.timing(scale, { toValue: 0.84, duration: 70, useNativeDriver: true }),
-      Animated.timing(scale, { toValue: 1.0, duration: 120, useNativeDriver: true }),
-    ]).start();
-    onPress(index);
+    if (phase === 'placement') {
+      if (board[index] !== null) return;
+      const nextBoard = placePiece(board, index, 'X');
+      if (!nextBoard) return;
+      const winningLine = getWinningLine(nextBoard, boardSize, winLength);
+      const winner = winningLine ? 'X' : null;
+      setState(prev => ({
+        ...prev,
+        board: nextBoard,
+        currentPlayer: 'O',
+        phase: canPlace(nextBoard, 'O', pieceLimit) ? 'placement' : 'movement',
+        status: winner ? 'won' : isDraw(nextBoard, boardSize, winLength) ? 'draw' : 'playing',
+        winner,
+        winningLine,
+      }));
+    } else {
+      if (selectedIndex === null) {
+        if (board[index] !== 'X') return;
+        setState(prev => ({ ...prev, selectedIndex: index }));
+      } else {
+        if (selectedIndex === index) { setState(prev => ({ ...prev, selectedIndex: null })); return; }
+        if (board[index] === 'X') { setState(prev => ({ ...prev, selectedIndex: index })); return; }
+        if (board[index] !== null) return;
+        const nextBoard = movePiece(board, selectedIndex, index, 'X');
+        if (!nextBoard) return;
+        const winningLine = getWinningLine(nextBoard, boardSize, winLength);
+        const winner = winningLine ? 'X' : null;
+        setState(prev => ({
+          ...prev,
+          board: nextBoard,
+          currentPlayer: 'O',
+          phase: canPlace(nextBoard, 'O', pieceLimit) ? 'placement' : 'movement',
+          status: winner ? 'won' : isDraw(nextBoard, boardSize, winLength) ? 'draw' : 'playing',
+          winner,
+          winningLine,
+          selectedIndex: null,
+        }));
+      }
+    }
   };
 
-  const borderColor = isWinCell
-    ? C.selected
-    : isSelected
-    ? C.selected
-    : C.border;
+  const cellSize = BOARD_WIDTH / state.boardSize;
+  const boardFontSize = Math.floor(cellSize * 0.44);
 
-  const bgColor = isSelected
-    ? C.selectedBg
-    : isWinCell
-    ? C.winCell
-    : C.card;
+  const animatedResultStyle = useAnimatedStyle(() => ({
+    opacity: resultOpacity.value,
+    transform: [{ scale: resultScale.value }]
+  }));
 
   return (
-    <Pressable
-      onPress={handlePress}
-      accessibilityLabel={`cell-${index}`}
-      style={styles.cellPressable}
-    >
-      <Animated.View
-        style={[
-          styles.cellInner,
-          { borderColor, backgroundColor: bgColor },
-          { transform: [{ scale }] },
-        ]}
-      >
-        {value === 'X' && (
-          <Text
-            style={{
-              fontSize,
-              fontWeight: '900',
-              color: C.xColor,
-              textShadowColor: C.xGlow,
-              textShadowOffset: { width: 0, height: 0 },
-              textShadowRadius: 12,
-            }}
-          >
-            ✕
-          </Text>
-        )}
-        {value === 'O' && (
-          <Text
-            style={{
-              fontSize,
-              fontWeight: '900',
-              color: C.oColor,
-              textShadowColor: C.oGlow,
-              textShadowOffset: { width: 0, height: 0 },
-              textShadowRadius: 12,
-            }}
-          >
-            ○
-          </Text>
-        )}
-      </Animated.View>
-    </Pressable>
-  );
-}
+    <View style={styles.root}>
+      <SafeAreaView style={styles.safe}>
+        <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+          
+          {/* Header */}
+          <View style={styles.header}>
+            <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+              <Ionicons name="close" size={24} color={C.xColor} />
+            </Pressable>
+            <View style={styles.roundBadge}><Text style={styles.roundTxt}>ROUND {roundNumber}</Text></View>
+            <View style={styles.levelBadge}><Text style={styles.levelTxt}>LV {level}</Text></View>
+          </View>
 
-// ── PieceBadge ────────────────────────────────────────────────────
+          {/* Player HUD */}
+          <View style={styles.players}>
+            <View style={[styles.playerCard, state.currentPlayer === 'X' && state.status === 'playing' && styles.activeCard]}>
+              <Text style={[styles.symbol, { color: C.xColor }]}>X</Text>
+              <Text style={styles.name}>You</Text>
+              {winStreak > 0 && <Text style={styles.streak}>🔥 {winStreak}</Text>}
+            </View>
+            <View style={styles.vsContainer}><Text style={styles.vsTxt}>VS</Text></View>
+            <View style={[styles.playerCard, state.currentPlayer === 'O' && state.status === 'playing' && styles.activeCard]}>
+              <Text style={[styles.symbol, { color: C.oColor }]}>O</Text>
+              <Text style={styles.name}>{bot.name}</Text>
+              <Text style={styles.botLevel}>Bot Lv.{bot.level}</Text>
+            </View>
+          </View>
 
-function PieceBadge({ player, board }: { player: Player; board: ReturnType<typeof createBoard> }) {
-  const count = getPlayerPieces(board, player).length;
-  const color = player === 'X' ? C.xColor : C.oColor;
-  return (
-    <View style={[styles.badge, { borderColor: color }]}>
-      <Text style={[styles.badgeLabel, { color: C.textSecondary }]}>{player}</Text>
-      <Text style={[styles.badgeCount, { color }]}>{count}/3</Text>
+          {/* Instruction Card */}
+          {state.status === 'playing' && (
+            <View style={styles.instructionCard}>
+              <View style={styles.instrRow}>
+                <Text style={styles.instrEmoji}>🎯</Text>
+                <Text style={styles.instrLabel}>Goal: {state.winLength} in a row</Text>
+              </View>
+              <View style={styles.instrRow}>
+                <Text style={styles.instrEmoji}>📦</Text>
+                <Text style={styles.instrLabel}>Pieces: {getPlayerPieces(state.board, 'X').length} / {state.pieceLimit}</Text>
+              </View>
+              <View style={styles.instrHintBox}>
+                <Text style={styles.instrHintTxt}>
+                  {state.phase === 'placement' ? `👉 Place ${state.pieceLimit - getPlayerPieces(state.board, 'X').length} more` : '👉 Move a piece'}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Board */}
+          <View style={[styles.boardContainer, { width: BOARD_WIDTH, height: BOARD_WIDTH }]}>
+            <View style={styles.board}>
+              {state.board.map((cell, idx) => (
+                <Cell 
+                  key={idx} index={idx} value={cell} boardSize={state.boardSize}
+                  isSelected={state.selectedIndex === idx} isWinCell={state.winningLine?.includes(idx)}
+                  fontSize={boardFontSize} disabled={state.currentPlayer !== 'X' || state.status !== 'playing'}
+                  onPress={handleCellPress} onLayout={(i: number, l: any) => setTileLayouts(p => ({ ...p, [i]: l }))}
+                />
+              ))}
+              <StrikeLine winLine={state.winningLine || null} layouts={tileLayouts} boardSize={state.boardSize} />
+            </View>
+          </View>
+
+          {/* Result Overlay */}
+          {state.status !== 'playing' && (
+            <View style={styles.resultWrapper}>
+              <Animated.View style={[styles.resultBanner, animatedResultStyle]}>
+                <Text style={[styles.resultTitle, { color: state.winner === 'X' ? C.gold : state.winner === 'O' ? C.xColor : C.textPrimary }]}>
+                  {state.winner === 'X' ? 'VICTORY!' : state.winner === 'O' ? 'DEFEAT' : 'DRAW'}
+                </Text>
+                {xpGained && <View style={styles.xpBadge}><Text style={styles.xpTxt}>+{xpGained} XP</Text></View>}
+                <Text style={styles.nextRoundTxt}>Next round starting...</Text>
+              </Animated.View>
+            </View>
+          )}
+
+        </ScrollView>
+      </SafeAreaView>
+      <View pointerEvents="none" style={styles.confettiOverlay}>
+        {showConfetti && <ConfettiCannon count={200} origin={{ x: W / 2, y: -20 }} fallSpeed={3000} />}
+      </View>
     </View>
   );
 }
 
-// ── GameScreen ────────────────────────────────────────────────────
-
-export default function GameScreen() {
-  const { width: W } = useWindowDimensions();
-  // Font size derived from board width (90% of screen) divided by 3 cells
-  const CELL_PX = (W * 0.9) / 3;
-  const FONT_SIZE = Math.floor(CELL_PX * 0.44);
-
-  const [state, setState] = useState<GameState>(createInitialState);
-  const aiRunning = useRef(false);
-
-  // ── AI turn ──────────────────────────────────────────────────────
-  const runAI = useCallback((_s: GameState) => {
-    if (aiRunning.current) return;
-    aiRunning.current = true;
-
-    setTimeout(() => {
-      setState(prev => {
-        if (prev.status !== 'playing' || prev.currentPlayer !== 'O') {
-          aiRunning.current = false;
-          return prev;
-        }
-
-        const move = getAIMove(prev.board);
-        let nextBoard = prev.board;
-
-        if (move.fromIndex !== undefined) {
-          const result = movePiece(prev.board, move.fromIndex, move.toIndex, 'O');
-          if (!result) { aiRunning.current = false; return prev; }
-          nextBoard = result;
-        } else {
-          const result = placePiece(prev.board, move.toIndex, 'O');
-          if (!result) { aiRunning.current = false; return prev; }
-          nextBoard = result;
-        }
-
-        // ✅ Win determined ONLY by line pattern — never piece count
-        const winner = checkWinner(nextBoard);
-        const draw = !winner && isDraw(nextBoard);
-        aiRunning.current = false;
-
-        return {
-          ...prev,
-          board: nextBoard,
-          currentPlayer: 'X',
-          phase: derivePhase(nextBoard, 'X'),
-          status: winner ? 'won' : draw ? 'draw' : 'playing',
-          winner: winner ?? null,
-          selectedIndex: null,
-        };
-      });
-    }, 380 + Math.random() * 200);
-  }, []);
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (state.currentPlayer === 'O' && state.status === 'playing') runAI(state);
-  }, [state.currentPlayer, state.status]);
-
-  // ── Human tap ────────────────────────────────────────────────────
-  const handleCellPress = useCallback((index: number) => {
-    setState(prev => {
-      if (prev.status !== 'playing' || prev.currentPlayer !== 'X') return prev;
-      const { board, phase, selectedIndex } = prev;
-
-      // ── Placement ──
-      if (phase === 'placement') {
-        if (board[index] !== null) return prev;
-        const nextBoard = placePiece(board, index, 'X');
-        if (!nextBoard) return prev;
-
-        // ✅ Win determined ONLY by line pattern
-        const winner = checkWinner(nextBoard);
-        const draw = !winner && isDraw(nextBoard);
-
-        return {
-          ...prev,
-          board: nextBoard,
-          currentPlayer: 'O',
-          phase: derivePhase(nextBoard, 'O'),
-          status: winner ? 'won' : draw ? 'draw' : 'playing',
-          winner: winner ?? null,
-          selectedIndex: null,
-        };
-      }
-
-      // ── Movement ──
-      if (selectedIndex === null) {
-        if (board[index] !== 'X') return prev;           // must select own piece
-        return { ...prev, selectedIndex: index };
-      }
-      if (selectedIndex === index) return { ...prev, selectedIndex: null };  // deselect
-      if (board[index] === 'X') return { ...prev, selectedIndex: index };    // switch piece
-
-      if (board[index] !== null) return prev;             // blocked by opponent
-
-      const nextBoard = movePiece(board, selectedIndex, index, 'X');
-      if (!nextBoard) return prev;
-
-      // ✅ Win determined ONLY by line pattern
-      const winner = checkWinner(nextBoard);
-      const draw = !winner && isDraw(nextBoard);
-
-      return {
-        ...prev,
-        board: nextBoard,
-        currentPlayer: 'O',
-        phase: derivePhase(nextBoard, 'O'),
-        status: winner ? 'won' : draw ? 'draw' : 'playing',
-        winner: winner ?? null,
-        selectedIndex: null,
-      };
-    });
-  }, []);
-
-  // ── Reset ────────────────────────────────────────────────────────
-  const handleReset = useCallback(() => {
-    aiRunning.current = false;
-    setState(createInitialState());
-  }, []);
-
-  // ── Derived UI ────────────────────────────────────────────────────
-  const { board, currentPlayer, phase, status, winner, selectedIndex } = state;
-  const winCells = getWinCells(board, state.boardSize, state.winLength);
-
-  const phaseHint =
-    status !== 'playing' ? ''
-    : currentPlayer === 'X'
-      ? phase === 'placement' ? '⟶ Place your piece'
-        : selectedIndex === null ? '⟶ Select your piece'
-        : '⟶ Tap an empty cell'
-    : 'AI is thinking…';
-
-  const statusLabel =
-    status === 'won' ? (winner === 'X' ? '🎉 You Win!' : '🤖 AI Wins!')
-    : status === 'draw' ? '🤝 It\'s a Draw!'
-    : currentPlayer === 'X' ? 'Your Turn  ✕'
-    : 'AI Turn  ○';
-
-  const statusColor =
-    status === 'won' ? (winner === 'X' ? C.xColor : C.oColor)
-    : status === 'draw' ? C.selected
-    : currentPlayer === 'X' ? C.xColor : C.oColor;
-
-  return (
-    // ✅ flex:1 — parent fills the whole screen
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" backgroundColor={C.bg} />
-
-      {/* Title */}
-      <View style={styles.titleRow}>
-        <Text style={styles.titleMain}>MOVING</Text>
-        <Text style={styles.titleSub}>TIC TAC TOE</Text>
-      </View>
-
-      {/* Status */}
-      <View style={styles.statusCard}>
-        <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
-        {phaseHint !== '' && (
-          <Text style={styles.phaseHint}>{phaseHint}</Text>
-        )}
-      </View>
-
-      {/* Piece counters */}
-      <View style={styles.badgeRow}>
-        <PieceBadge player="X" board={board} />
-        <View style={styles.vsCircle}>
-          <Text style={styles.vsText}>VS</Text>
-        </View>
-        <PieceBadge player="O" board={board} />
-      </View>
-
-      {/*
-        ✅ BOARD:
-        - width: '90%'     → responsive, no fixed pixels
-        - aspectRatio: 1   → always square
-        - alignSelf: 'center'
-      */}
-      <View style={styles.board}>
-        {board.map((cell, idx) => (
-          <Cell
-            key={idx}
-            index={idx}
-            value={cell}
-            isSelected={selectedIndex === idx}
-            isWinCell={winCells.has(idx)}
-            fontSize={FONT_SIZE}
-            onPress={handleCellPress}
-          />
-        ))}
-      </View>
-
-      {/* Phase label */}
-      {status === 'playing' && (
-        <View style={styles.phaseTag}>
-          <Text style={styles.phaseTagText}>
-            {phase === 'placement' ? '📍 Placement Phase' : '🔄 Movement Phase'}
-          </Text>
-        </View>
-      )}
-
-      {/* Reset */}
-      <Pressable
-        style={({ pressed }) => [styles.resetBtn, pressed && styles.resetBtnActive]}
-        onPress={handleReset}
-        accessibilityLabel="reset-button"
-      >
-        <Text style={styles.resetBtnText}>
-          {status !== 'playing' ? '▶  Play Again' : '↺  Restart'}
-        </Text>
-      </Pressable>
-    </SafeAreaView>
-  );
-}
-
-// ── Styles ────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
-  // ✅ flex:1 — fills the whole screen
-  safe: {
-    flex: 1,
-    backgroundColor: C.bg,
-    alignItems: 'center',
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) + 4 : 8,
-    paddingBottom: 20,
-  },
+  root: { flex: 1, backgroundColor: C.bg },
+  safe: { flex: 1 },
+  scroll: { paddingBottom: 60, alignItems: 'center' },
+  header: { flexDirection: 'row', alignItems: 'center', width: '100%', paddingHorizontal: 20, marginTop: 10, marginBottom: 15 },
+  backBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.card, justifyContent: 'center', alignItems: 'center' },
+  roundBadge: { backgroundColor: C.accent, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, marginHorizontal: 10 },
+  roundTxt: { color: '#FFF', fontWeight: '900', fontSize: 12 },
+  levelBadge: { backgroundColor: C.card, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: C.border },
+  levelTxt: { color: C.gold, fontWeight: '900', fontSize: 12 },
+  
+  players: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 15, width: '100%', paddingHorizontal: 20, marginBottom: 20 },
+  playerCard: { flex: 1, backgroundColor: C.card, borderRadius: 20, padding: 15, alignItems: 'center', borderWidth: 1, borderColor: C.border },
+  activeCard: { borderColor: C.accent, shadowColor: C.accent, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
+  symbol: { fontSize: 24, fontWeight: '900', marginBottom: 2 },
+  name: { fontSize: 13, color: C.textPrimary, fontWeight: '700' },
+  botLevel: { fontSize: 10, color: C.textSecondary, marginTop: 2 },
+  streak: { fontSize: 11, color: C.gold, fontWeight: '800', marginTop: 2 },
+  vsContainer: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.surface, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: C.border },
+  vsTxt: { color: C.accentGlow, fontWeight: '900', fontSize: 11 },
 
-  titleRow: {
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  titleMain: {
-    fontSize: 28,
-    fontWeight: '900',
-    letterSpacing: 8,
-    color: C.accentGlow,
-  },
-  titleSub: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 5,
-    color: C.textSecondary,
-    marginTop: -3,
-  },
+  instructionCard: { width: '90%', backgroundColor: C.card, borderRadius: 20, padding: 15, marginBottom: 20, borderWidth: 1, borderColor: C.border },
+  instrRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  instrEmoji: { fontSize: 16, marginRight: 8 },
+  instrLabel: { color: C.textPrimary, fontSize: 13, fontWeight: '700' },
+  instrHintBox: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.border },
+  instrHintTxt: { color: C.accentGlow, fontSize: 13, fontWeight: '800' },
 
-  statusCard: {
-    backgroundColor: C.card,
-    borderRadius: 14,
-    paddingVertical: 9,
-    paddingHorizontal: 22,
-    marginBottom: 10,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: C.border,
-    minWidth: 200,
-  },
-  statusText: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  phaseHint: {
-    fontSize: 12,
-    color: C.textSecondary,
-    marginTop: 2,
-    fontWeight: '500',
-  },
+  boardContainer: { shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 20, elevation: 15 },
+  board: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', backgroundColor: C.surface, borderRadius: 20, overflow: 'hidden', borderWidth: 2, borderColor: C.border },
+  cellInner: { flex: 1, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: C.border },
 
-  badgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 12,
-  },
-  badge: {
-    borderWidth: 1.5,
-    borderRadius: 12,
-    paddingVertical: 5,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    backgroundColor: C.card,
-  },
-  badgeLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 2,
-  },
-  badgeCount: {
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  vsCircle: {
-    backgroundColor: C.accentDim,
-    borderRadius: 17,
-    width: 34,
-    height: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  vsText: {
-    color: C.accentGlow,
-    fontWeight: '900',
-    fontSize: 11,
-    letterSpacing: 1,
-  },
-
-  // ✅ BOARD: width:'90%', aspectRatio:1, alignSelf:'center'
-  board: {
-    width: '90%',
-    aspectRatio: 1,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: C.surface,
-    borderWidth: 1.5,
-    borderColor: C.border,
-  },
-
-  // ✅ CELL: width:'33.33%', aspectRatio:1
-  cellPressable: {
-    width: '33.33%',
-    aspectRatio: 1,
-  },
-  cellInner: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-
-  phaseTag: {
-    marginTop: 12,
-    backgroundColor: C.accentDim,
-    borderRadius: 18,
-    paddingVertical: 5,
-    paddingHorizontal: 16,
-  },
-  phaseTagText: {
-    color: C.accentGlow,
-    fontWeight: '700',
-    fontSize: 12,
-    letterSpacing: 0.5,
-  },
-
-  resetBtn: {
-    marginTop: 14,
-    backgroundColor: C.accent,
-    borderRadius: 14,
-    paddingVertical: 13,
-    paddingHorizontal: 46,
-  },
-  resetBtnActive: {
-    backgroundColor: C.accentDim,
-    transform: [{ scale: 0.96 }],
-  },
-  resetBtnText: {
-    color: '#FFF',
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
+  resultWrapper: { width: '100%', paddingHorizontal: 20, marginTop: 20 },
+  resultBanner: { backgroundColor: C.card, borderRadius: 24, padding: 25, alignItems: 'center', borderWidth: 2, borderColor: C.accentDim },
+  resultTitle: { fontSize: 28, fontWeight: '900', marginBottom: 10 },
+  xpBadge: { backgroundColor: '#FFD70022', borderColor: C.gold, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, marginBottom: 12 },
+  xpTxt: { color: C.gold, fontWeight: '900', fontSize: 16 },
+  nextRoundTxt: { color: C.textSecondary, fontSize: 12, fontWeight: '600' },
+  confettiOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 999 },
 });

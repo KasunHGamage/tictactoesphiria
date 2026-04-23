@@ -22,6 +22,7 @@ export interface GameState {
   phase: GamePhase;
   status: GameStatus;
   winner: Player | null;
+  winningLine: number[] | null;
   /** Index of the piece currently selected for movement (human only) */
   selectedIndex: number | null;
 }
