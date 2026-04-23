@@ -4,21 +4,9 @@
 
 import { Board, CellValue, Player } from './gameTypes';
 
-/** Win patterns: rows, columns, diagonals */
-const WIN_LINES: number[][] = [
-  [0, 1, 2], // top row
-  [3, 4, 5], // mid row
-  [6, 7, 8], // bot row
-  [0, 3, 6], // left col
-  [1, 4, 7], // mid col
-  [2, 5, 8], // right col
-  [0, 4, 8], // diag
-  [2, 4, 6], // anti-diag
-];
-
-/** Create a fresh, empty 9-cell board */
-export function createBoard(): Board {
-  return Array(9).fill(null) as Board;
+/** Create a fresh, empty board of given size */
+export function createBoard(size: number = 3): Board {
+  return Array(size * size).fill(null) as Board;
 }
 
 /** Return all indices occupied by a given player */
@@ -29,9 +17,9 @@ export function getPlayerPieces(board: Board, player: Player): number[] {
   }, []);
 }
 
-/** True when the player still has fewer than 3 pieces on the board */
-export function canPlace(board: Board, player: Player): boolean {
-  return getPlayerPieces(board, player).length < 3;
+/** True when the player still has fewer than pieceLimit pieces on the board */
+export function canPlace(board: Board, player: Player, pieceLimit: number = 3): boolean {
+  return getPlayerPieces(board, player).length < pieceLimit;
 }
 
 /** Return indices of all empty cells */
@@ -77,28 +65,67 @@ export function movePiece(
   return next;
 }
 
+// Helper to check a specific line for a winner
+function checkLine(board: Board, line: number[], winLength: number): Player | null {
+  let count = 0;
+  let lastPlayer: Player | null = null;
+
+  for (const idx of line) {
+    const player = board[idx];
+    if (player && player === lastPlayer) {
+      count++;
+    } else {
+      count = player ? 1 : 0;
+      lastPlayer = player;
+    }
+    if (count === winLength) return lastPlayer;
+  }
+  return null;
+}
+
 /**
- * Check the board for a winner.
- * ONLY returns a player when 3 of their marks share a straight line.
- * Piece count is NEVER used — pattern only.
+ * Check the board for a winner with dynamic size and winLength.
  */
-export function checkWinner(board: Board): Player | null {
-  console.log('Checking winner:', JSON.stringify(board));
+export function checkWinner(board: Board, size: number = 3, winLength: number = 3): Player | null {
+  const line = getWinningLine(board, size, winLength);
+  if (!line) return null;
+  return board[line[0]] as Player;
+}
 
-  const lines = [
-    [0, 1, 2], [3, 4, 5], [6, 7, 8], // rows
-    [0, 3, 6], [1, 4, 7], [2, 5, 8], // columns
-    [0, 4, 8], [2, 4, 6],             // diagonals
-  ];
+export function getWinningLine(board: Board, size: number = 3, winLength: number = 3): number[] | null {
+  // 1. Rows
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c <= size - winLength; c++) {
+      const line: number[] = [];
+      for (let i = 0; i < winLength; i++) line.push(r * size + (c + i));
+      if (line.every(i => board[i] && board[i] === board[line[0]])) return line;
+    }
+  }
 
-  for (const [a, b, c] of lines) {
-    if (
-      board[a] !== null &&
-      board[a] === board[b] &&
-      board[a] === board[c]
-    ) {
-      console.log(`Winner found: ${board[a]} on line [${a},${b},${c}]`);
-      return board[a] as Player;
+  // 2. Columns
+  for (let c = 0; c < size; c++) {
+    for (let r = 0; r <= size - winLength; r++) {
+      const line: number[] = [];
+      for (let i = 0; i < winLength; i++) line.push((r + i) * size + c);
+      if (line.every(i => board[i] && board[i] === board[line[0]])) return line;
+    }
+  }
+
+  // 3. Diagonals (top-left to bottom-right)
+  for (let r = 0; r <= size - winLength; r++) {
+    for (let c = 0; c <= size - winLength; c++) {
+      const line: number[] = [];
+      for (let i = 0; i < winLength; i++) line.push((r + i) * size + (c + i));
+      if (line.every(i => board[i] && board[i] === board[line[0]])) return line;
+    }
+  }
+
+  // 4. Diagonals (top-right to bottom-left)
+  for (let r = 0; r <= size - winLength; r++) {
+    for (let c = winLength - 1; c < size; c++) {
+      const line: number[] = [];
+      for (let i = 0; i < winLength; i++) line.push((r + i) * size + (c - i));
+      if (line.every(i => board[i] && board[i] === board[line[0]])) return line;
     }
   }
 
@@ -106,9 +133,8 @@ export function checkWinner(board: Board): Player | null {
 }
 
 /**
- * Determine whether all 9 cells are filled and no winner exists.
- * (Rare in Moving TicTacToe, but still handled.)
+ * Determine whether the board is filled and no winner exists.
  */
-export function isDraw(board: Board): boolean {
-  return board.every((c: CellValue) => c !== null) && checkWinner(board) === null;
+export function isDraw(board: Board, size: number = 3, winLength: number = 3): boolean {
+  return board.every((c: CellValue) => c !== null) && checkWinner(board, size, winLength) === null;
 }

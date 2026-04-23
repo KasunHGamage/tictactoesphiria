@@ -12,9 +12,10 @@ import * as Haptics from 'expo-haptics';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { Ionicons } from '@expo/vector-icons';
 import { Board, Player } from '../game/gameTypes';
-import { checkWinner, canPlace } from '../game/gameEngine';
+import { checkWinner, canPlace, getWinningLine } from '../game/gameEngine';
 import { useMatch } from '../hooks/useMatch';
 import { recordMatchResult } from '../services/userService';
+import { startNextRound } from '../services/matchService';
 
 const C = {
   bg: '#0D0D1A', surface: '#14142B', card: '#1C1C3A', border: '#2A2A5A',
@@ -25,28 +26,16 @@ const C = {
   gold: '#FFD700',
 };
 
-const WIN_LINES = [
-  [0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6],
-];
 
-function getWinningLine(board: Board, winner: Player | null): number[] | null {
-  if (!winner) return null;
-  for (const line of WIN_LINES) {
-    const [a, b, c] = line;
-    if (board[a] === winner && board[b] === winner && board[c] === winner) {
-      return line;
-    }
-  }
-  return null;
-}
 
 interface CellProps {
   index: number; value: Player | null; isSelected: boolean;
   isWinCell: boolean; isOtherDimmed: boolean; fontSize: number; disabled: boolean;
+  boardSize: number;
   onPress: (i: number) => void;
   onLayout: (index: number, layout: { x: number, y: number, w: number, h: number }) => void;
 }
-function Cell({ index, value, isSelected, isWinCell, isOtherDimmed, fontSize, disabled, onPress, onLayout }: CellProps) {
+function Cell({ index, value, isSelected, isWinCell, isOtherDimmed, fontSize, disabled, boardSize, onPress, onLayout }: CellProps) {
   const scale = useSharedValue(1);
   const pulse = useSharedValue(1);
 
@@ -62,8 +51,8 @@ function Cell({ index, value, isSelected, isWinCell, isOtherDimmed, fontSize, di
           withTiming(1.12, { duration: 600 }),
           withTiming(1, { duration: 600 })
         ),
-        -1, // Loop infinitely
-        true // Reverse
+        -1, 
+        true 
       );
     } else {
       pulse.value = 1;
@@ -90,7 +79,12 @@ function Cell({ index, value, isSelected, isWinCell, isOtherDimmed, fontSize, di
   const glow = value === 'X' ? C.xGlow : C.oGlow;
 
   return (
-    <Pressable onLayout={handleLayout} onPress={handle} accessibilityLabel={`cell-${index}`} style={ms.cellPress}>
+    <Pressable 
+      onLayout={handleLayout} 
+      onPress={handle} 
+      accessibilityLabel={`cell-${index}`} 
+      style={[ms.cellPress, { flexBasis: `${100 / boardSize}%` }]}
+    >
       <Animated.View style={[ms.cellInner, animatedCellInner]}>
         {value && (
           <Text style={{ 
@@ -166,17 +160,19 @@ function StrikeLine({ winLine, layouts }: { winLine: number[] | null, layouts: R
   return <Animated.View style={animatedStyle} />;
 }
 
+
 export default function MultiplayerGameScreen({ route, navigation }: any) {
   const { matchId, playerSide, myUid, myName } = route.params;
   const { width: W } = useWindowDimensions();
   const BOARD_WIDTH = W * 0.9;
-  const FONT = Math.floor((BOARD_WIDTH / 3) * 0.44);
+  
   const { match, optimisticBoard, myTurn, error, applyMove, resign } = useMatch(matchId, myUid, playerSide);
   
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [resultRecorded, setResultRecorded] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [tileLayouts, setTileLayouts] = useState<Record<number, any>>({});
+  const [xpGained, setXpGained] = useState<number | null>(null);
   
   // Reanimated values for board focus
   const boardScale = useSharedValue(1);
@@ -187,35 +183,34 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
     setTileLayouts(prev => ({ ...prev, [index]: layout }));
   }, []);
 
-  // Reset EVERYTHING when matchId changes or screen is focused
   const resetLocalState = useCallback(() => {
-    console.log("Game State Resetting for Match:", matchId);
     setSelectedIdx(null);
     setResultRecorded(false);
     setShowConfetti(false);
+    setXpGained(null);
     boardScale.value = 1;
     resultScale.value = 0.8;
     resultOpacity.value = 0;
-  }, [matchId]);
+  }, []);
 
+  // Handle Round Reset
   useEffect(() => {
-    resetLocalState();
-  }, [matchId, resetLocalState]);
-
-  useFocusEffect(
-    useCallback(() => {
-      // Logic when focusing
-      return () => {
-        // Logic when unfocusing
-        resetLocalState();
-      };
-    }, [resetLocalState])
-  );
+    if (match?.status === 'active' && resultRecorded) {
+      resetLocalState();
+    }
+  }, [match?.status, resultRecorded, resetLocalState]);
 
   const board: Board = optimisticBoard ?? match?.board ?? Array(9).fill(null);
-  const phase = match ? (canPlace(board, playerSide) ? 'placement' : 'movement') : 'placement';
-  const winner = match ? checkWinner(board) : null;
-  const winningLine = getWinningLine(board, winner);
+  const boardSize = match?.boardSize || 3;
+  const winLength = match?.winLength || 3;
+  const pieceLimit = match?.pieceLimit || 3;
+  
+  const cellSize = BOARD_WIDTH / boardSize;
+  const boardFontSize = Math.floor(cellSize * 0.44);
+
+  const phase = match ? (canPlace(board, playerSide, pieceLimit) ? 'placement' : 'movement') : 'placement';
+  const winner = match?.winner;
+  const winningLine = match?.winningLine;
   const winSet = new Set(winningLine || []);
   
   const isWinner = winner === playerSide;
@@ -223,33 +218,40 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
   const opponentSide: Player = playerSide === 'X' ? 'O' : 'X';
   const opponentName = playerSide === 'X' ? match?.playerO?.displayName ?? 'Opponent' : match?.playerX?.displayName ?? 'Opponent';
 
-  // Cinematic Win Sequence
+  // Session Stats
+  const myScore = match?.scores?.[myUid] || 0;
+  const oppUid = playerSide === 'X' ? match?.playerO?.uid : match?.playerX?.uid;
+  const oppScore = (oppUid && match?.scores?.[oppUid]) || 0;
+  const myStreak = match?.winStreaks?.[myUid] || 0;
+
+  // Cinematic Win Sequence + Auto Next Round
   useEffect(() => {
     if (match?.status === 'finished') {
       if (winner) {
-        // 1. Strike + Board Zoom
         boardScale.value = withDelay(100, withTiming(1.05, { duration: 400 }));
-        
-        // 2. Confetti + Result Banner
         setTimeout(() => {
           if (isWinner) setShowConfetti(true);
           resultOpacity.value = withTiming(1, { duration: 400 });
           resultScale.value = withTiming(1, { duration: 500, easing: Easing.out(Easing.back(1.5)) });
         }, 600);
-      } else {
-        // Draw logic
-        resultOpacity.value = withTiming(1, { duration: 400 });
-        resultScale.value = withTiming(1, { duration: 400 });
       }
 
       if (!resultRecorded) {
         setResultRecorded(true);
-        recordMatchResult(myUid, isWinner);
+        const xp = (isWinner ? 50 : 20) + (myStreak * 10);
+        setXpGained(xp);
+        recordMatchResult(myUid, isWinner, isWinner ? myStreak : 0);
+        
         if (isWinner) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         else if (isLoser) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+
+        // AUTO START NEXT ROUND
+        setTimeout(() => {
+          startNextRound(matchId);
+        }, 3000);
       }
     }
-  }, [match?.status, winner, isWinner, isLoser, myUid, resultRecorded]);
+  }, [match?.status, winner, isWinner, isLoser, myUid, resultRecorded, myStreak, matchId]);
 
   const handleCell = useCallback(async (index: number) => {
     if (!match || !myTurn || match.status !== 'active') return;
@@ -269,12 +271,12 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
     const from = selectedIdx;
     setSelectedIdx(null);
     await applyMove({ type: 'move', fromIndex: from, toIndex: index });
-  }, [match, myTurn, phase, board, selectedIdx, playerSide, applyMove]);
+  }, [match, myTurn, phase, board, selectedIdx, playerSide, matchId]);
 
   const handleResign = () => {
-    Alert.alert('Resign?', 'You will forfeit the match.', [
+    Alert.alert('Exit Match?', 'Session will be saved.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Resign', style: 'destructive', onPress: () => resign().then(() => navigation.goBack()) },
+      { text: 'Exit', style: 'destructive', onPress: () => resign().then(() => navigation.goBack()) },
     ]);
   };
 
@@ -306,73 +308,69 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
           contentContainerStyle={ms.scroll} 
           showsVerticalScrollIndicator={false}
         >
-          {/* Header */}
+          {/* Session Header */}
           <View style={ms.header}>
-            <Pressable onPress={() => navigation.goBack()} style={ms.backBtn}>
-              <Ionicons name="chevron-back" size={24} color={C.accentGlow} />
+            <Pressable onPress={handleResign} style={ms.backBtn}>
+              <Ionicons name="close" size={24} color={C.xColor} />
             </Pressable>
+            <View style={ms.roundBadge}>
+              <Text style={ms.roundTxt}>ROUND {match?.roundNumber || 1}</Text>
+            </View>
             <Text style={ms.matchCode}>{matchId}</Text>
-            {status === 'active' && (
-              <Pressable onPress={handleResign} style={ms.resignBtn}>
-                <Text style={ms.resignTxt}>Resign</Text>
-              </Pressable>
-            )}
           </View>
 
-          {/* Players Section */}
+          {/* Player HUD */}
           <View style={ms.players}>
-            <View style={[
-              ms.playerTag, 
-              { borderColor: playerSide === 'X' ? C.xColor : C.oColor },
-              isWinner && ms.winnerTag
-            ]}>
-              {isWinner && <Text style={ms.crown}>👑</Text>}
-              <Text style={[ms.playerSymbol, { color: playerSide === 'X' ? C.xColor : C.oColor }]}>{playerSide}</Text>
-              <Text style={ms.playerName} numberOfLines={1}>{myName}</Text>
-              <Text style={ms.youLabel}>(you)</Text>
+            <View style={[ms.playerCard, myTurn && status === 'active' && ms.activeCard]}>
+              <Text style={[ms.symbol, { color: playerSide === 'X' ? C.xColor : C.oColor }]}>{playerSide}</Text>
+              <Text style={ms.score}>{myScore}</Text>
+              {myStreak > 0 && <Text style={ms.streak}>🔥 {myStreak}</Text>}
+              <Text style={ms.name} numberOfLines={1}>{myName}</Text>
             </View>
-            <Text style={ms.vsText}>VS</Text>
-            <View style={[
-              ms.playerTag, 
-              { borderColor: opponentSide === 'X' ? C.xColor : C.oColor },
-              isLoser && ms.winnerTag
-            ]}>
-              {isLoser && <Text style={ms.crown}>👑</Text>}
-              <Text style={[ms.playerSymbol, { color: opponentSide === 'X' ? C.xColor : C.oColor }]}>{opponentSide}</Text>
-              <Text style={ms.playerName} numberOfLines={1}>{opponentName}</Text>
+            
+            <View style={ms.vsContainer}>
+              <Text style={ms.vsTxt}>VS</Text>
+            </View>
+
+            <View style={[ms.playerCard, !myTurn && status === 'active' && ms.activeCard]}>
+              <Text style={[ms.symbol, { color: opponentSide === 'X' ? C.xColor : C.oColor }]}>{opponentSide}</Text>
+              <Text style={ms.score}>{oppScore}</Text>
+              <Text style={ms.name} numberOfLines={1}>{opponentName}</Text>
             </View>
           </View>
 
           {/* Main Board */}
           <Animated.View style={[ms.boardContainer, animatedBoardStyle]}>
-            <View style={ms.board}>
+            <View style={[ms.board, { width: BOARD_WIDTH, height: BOARD_WIDTH }]}>
               {board.map((cell, idx) => (
-                <Cell key={idx} index={idx} value={cell}
-                  isSelected={selectedIdx === idx} isWinCell={winSet.has(idx)}
+                <Cell 
+                  key={idx} 
+                  index={idx} 
+                  value={cell}
+                  isSelected={selectedIdx === idx} 
+                  isWinCell={winSet.has(idx)}
                   isOtherDimmed={!!winner}
-                  fontSize={FONT} disabled={!myTurn || status !== 'active'}
+                  fontSize={boardFontSize} 
+                  disabled={!myTurn || status !== 'active'}
+                  boardSize={boardSize}
                   onPress={handleCell}
-                  onLayout={handleTileLayout} />
+                  onLayout={handleTileLayout}
+                />
               ))}
-              {/* Strike Line */}
-              <StrikeLine winLine={winningLine} layouts={tileLayouts} />
+              <StrikeLine winLine={winningLine || null} layouts={tileLayouts} />
             </View>
           </Animated.View>
 
-          {/* Turn Indicator */}
-          {status === 'active' && (
-            <View style={ms.turnIndicatorContainer}>
-              <View style={[ms.activeStatus, myTurn && ms.myTurnGlow]}>
-                <Text style={[ms.statusTxt, { color: myTurn ? C.accentGlow : C.textSecondary }]}>
-                  {statusLabel}
-                </Text>
-                {error && <Text style={ms.errorTxt}>{error}</Text>}
-                <View style={ms.phaseTag}>
-                  <Text style={ms.phaseTxt}>{phase === 'placement' ? '📍 Placement' : '🔄 Movement'}</Text>
-                </View>
-              </View>
+          {/* HUD Info */}
+          <View style={ms.hudInfo}>
+            <View style={ms.ruleTag}>
+              <Text style={ms.ruleTxt}>{boardSize}x{boardSize} • {winLength} in a row</Text>
             </View>
-          )}
+            <Text style={[ms.statusMain, { color: myTurn ? C.accentGlow : C.textSecondary }]}>
+              {statusLabel}
+            </Text>
+            <Text style={ms.phaseMain}>{phase === 'placement' ? 'PLACEMENT' : 'MOVEMENT'}</Text>
+          </View>
 
           {/* Result Overlay */}
           {status === 'finished' && (
@@ -382,22 +380,20 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
                   ms.resultTitle, 
                   { color: isWinner ? C.gold : isLoser ? C.xColor : C.textPrimary }
                 ]}>
-                  {isWinner ? 'YOU WIN!' : isLoser ? 'GAME OVER' : 'DRAW'}
+                  {isWinner ? 'VICTORY!' : isLoser ? 'DEFEAT' : 'DRAW'}
                 </Text>
-                <Text style={ms.resultSub}>
-                  {isWinner ? 'A legendary victory!' : isLoser ? 'Better luck next time.' : 'Equal match!'}
-                </Text>
-                
-                <Pressable style={ms.playAgainBtn} onPress={() => navigation.goBack()}>
-                  <Text style={ms.playAgainTxt}>Play Again</Text>
-                </Pressable>
+                {xpGained && (
+                  <View style={ms.xpBadge}>
+                    <Text style={ms.xpTxt}>+{xpGained} XP</Text>
+                  </View>
+                )}
+                <Text style={ms.nextRoundTxt}>Preparing next round...</Text>
               </Animated.View>
             </View>
           )}
         </ScrollView>
       </SafeAreaView>
 
-      {/* Confetti Overlay — Always on top */}
       <View pointerEvents="none" style={ms.confettiOverlay}>
         {showConfetti && <ConfettiCannon count={200} origin={{ x: W / 2, y: -20 }} fallSpeed={3000} fadeOut={true} />}
       </View>
@@ -408,43 +404,39 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
 const ms = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   safe: { flex: 1 },
-  confettiOverlay: { 
-    ...StyleSheet.absoluteFillObject, 
-    zIndex: 999, 
-    elevation: 999 
-  },
-  scroll: { paddingBottom: 100, alignItems: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', width: '100%', paddingHorizontal: 20, marginTop: 20, marginBottom: 20 },
-  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.card, justifyContent: 'center', alignItems: 'center' },
-  matchCode: { flex: 1, textAlign: 'center', color: C.textSecondary, fontWeight: '800', fontSize: 13, letterSpacing: 3 },
-  resignBtn: { paddingVertical: 8, paddingHorizontal: 12 },
-  resignTxt: { color: C.xColor, fontWeight: '700', fontSize: 13 },
-  players: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 24, marginBottom: 30 },
-  playerTag: { flex: 1, backgroundColor: C.card, borderRadius: 16, borderWidth: 2, padding: 12, alignItems: 'center', position: 'relative' },
-  winnerTag: { borderColor: C.gold, shadowColor: C.gold, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
-  crown: { position: 'absolute', top: -15, fontSize: 24 },
-  playerSymbol: { fontSize: 24, fontWeight: '900' },
-  playerName: { color: C.textPrimary, fontSize: 14, fontWeight: '700', marginTop: 4 },
-  youLabel: { color: C.textSecondary, fontSize: 10 },
-  vsText: { color: C.accentGlow, fontWeight: '900', fontSize: 14 },
-  boardContainer: { width: '90%', aspectRatio: 1, alignSelf: 'center', marginBottom: 24 },
-  board: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', borderRadius: 24, overflow: 'hidden', backgroundColor: C.surface, borderWidth: 2, borderColor: C.border, position: 'relative' },
-  cellPress: { width: '33.33%', aspectRatio: 1 },
-  cellInner: { flex: 1, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  turnIndicatorContainer: { width: '100%', paddingHorizontal: 24, alignItems: 'center', marginBottom: 40 },
-  activeStatus: { width: '100%', backgroundColor: C.card, borderRadius: 20, padding: 20, alignItems: 'center', borderWidth: 1, borderColor: C.border },
-  myTurnGlow: { borderColor: C.accent, shadowColor: C.accent, shadowOpacity: 0.2, shadowRadius: 10, elevation: 5 },
-  statusTxt: { fontSize: 18, fontWeight: '800', marginBottom: 12 },
-  errorTxt: { color: C.xColor, fontSize: 12, marginBottom: 8 },
-  phaseTag: { backgroundColor: C.accentDim, borderRadius: 20, paddingVertical: 6, paddingHorizontal: 16 },
-  phaseTxt: { color: C.accentGlow, fontWeight: '700', fontSize: 12 },
-  resultWrapper: { width: '100%', paddingHorizontal: 24, marginTop: 10, alignItems: 'center' },
-  resultBanner: { width: '100%', backgroundColor: C.card, borderRadius: 24, padding: 24, alignItems: 'center', borderWidth: 2, borderColor: C.border },
-  resultTitle: { fontSize: 36, fontWeight: '900', letterSpacing: 2, marginBottom: 8 },
-  resultSub: { fontSize: 16, color: C.textSecondary, marginBottom: 24 },
-  playAgainBtn: { 
-    width: '100%', backgroundColor: C.accent, borderRadius: 16, paddingVertical: 18, 
-    alignItems: 'center', shadowColor: C.accent, shadowOpacity: 0.4, shadowRadius: 15, elevation: 8 
-  },
-  playAgainTxt: { color: '#FFF', fontSize: 18, fontWeight: '900', letterSpacing: 1 },
+  confettiOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 999, elevation: 999 },
+  scroll: { paddingBottom: 60, alignItems: 'center' },
+  header: { flexDirection: 'row', alignItems: 'center', width: '100%', paddingHorizontal: 20, marginTop: 10, marginBottom: 15 },
+  backBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.card, justifyContent: 'center', alignItems: 'center' },
+  roundBadge: { backgroundColor: C.accent, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, marginHorizontal: 10 },
+  roundTxt: { color: '#FFF', fontWeight: '900', fontSize: 14, letterSpacing: 1 },
+  matchCode: { flex: 1, textAlign: 'right', color: C.textSecondary, fontWeight: '700', fontSize: 12 },
+  
+  players: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 15, width: '100%', paddingHorizontal: 20, marginBottom: 25 },
+  playerCard: { flex: 1, backgroundColor: C.card, borderRadius: 20, padding: 15, alignItems: 'center', borderWidth: 1, borderColor: C.border },
+  activeCard: { borderColor: C.accent, shadowColor: C.accent, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
+  symbol: { fontSize: 28, fontWeight: '900', marginBottom: 5 },
+  score: { fontSize: 24, fontWeight: '900', color: C.textPrimary },
+  streak: { fontSize: 12, color: C.gold, fontWeight: '800', marginTop: 2 },
+  name: { fontSize: 12, color: C.textSecondary, marginTop: 5, fontWeight: '600' },
+  vsContainer: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.surface, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: C.border },
+  vsTxt: { color: C.accentGlow, fontWeight: '900', fontSize: 12 },
+
+  boardContainer: { shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 20, elevation: 15 },
+  board: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: C.surface, borderRadius: 20, overflow: 'hidden', borderWidth: 2, borderColor: C.border },
+  cellPress: { flexBasis: '20%', aspectRatio: 1 }, // Dynamic flexBasis handled in component
+  cellInner: { flex: 1, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: C.border },
+
+  hudInfo: { alignItems: 'center', marginTop: 25 },
+  ruleTag: { backgroundColor: C.card, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, marginBottom: 15 },
+  ruleTxt: { color: C.textSecondary, fontSize: 12, fontWeight: '700' },
+  statusMain: { fontSize: 22, fontWeight: '900', letterSpacing: 1, marginBottom: 5 },
+  phaseMain: { fontSize: 12, color: C.accentGlow, fontWeight: '800', letterSpacing: 2 },
+
+  resultWrapper: { width: '100%', paddingHorizontal: 20, marginTop: 20 },
+  resultBanner: { backgroundColor: C.card, borderRadius: 24, padding: 25, alignItems: 'center', borderWidth: 2, borderColor: C.accentDim },
+  resultTitle: { fontSize: 32, fontWeight: '900', marginBottom: 15 },
+  xpBadge: { backgroundColor: '#FFD70022', borderColor: C.gold, borderWidth: 1, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 15, marginBottom: 15 },
+  xpTxt: { color: C.gold, fontWeight: '900', fontSize: 18 },
+  nextRoundTxt: { color: C.textSecondary, fontSize: 14, fontWeight: '600' },
 });

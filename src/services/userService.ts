@@ -12,8 +12,14 @@ export interface UserProfile {
   gameId: string;
   wins: number;
   losses: number;
+  xp: number;
+  level: number;
   status: 'online' | 'offline' | 'in-match';
   createdAt: any;
+}
+
+export function calculateLevel(xp: number): number {
+  return Math.floor(Math.sqrt(xp / 100)) || 1;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -57,6 +63,8 @@ export async function createUserProfile(uid: string, email: string, displayName:
     gameId,
     wins: 0,
     losses: 0,
+    xp: 0,
+    level: 1,
     status: 'online',
     createdAt: serverTimestamp(),
   };
@@ -91,12 +99,23 @@ export async function updateUserStatus(uid: string, status: 'online' | 'offline'
 }
 
 /**
- * Record match result.
+ * Record match result with XP and Streaks.
  */
-export async function recordMatchResult(uid: string, isWin: boolean): Promise<void> {
-  await updateDoc(doc(db, 'users', uid), {
+export async function recordMatchResult(uid: string, isWin: boolean, streak: number = 0): Promise<void> {
+  const xpGained = (isWin ? 50 : 20) + (streak * 10);
+  
+  const userRef = doc(db, 'users', uid);
+  const snap = await getDoc(userRef);
+  const currentData = snap.data() as UserProfile;
+  
+  const nextXP = (currentData.xp || 0) + xpGained;
+  const nextLevel = calculateLevel(nextXP);
+
+  await updateDoc(userRef, {
     wins: increment(isWin ? 1 : 0),
     losses: increment(isWin ? 0 : 1),
+    xp: nextXP,
+    level: nextLevel,
     status: 'online',
   });
 }

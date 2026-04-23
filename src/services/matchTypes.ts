@@ -15,13 +15,20 @@ export interface PlayerInfo {
 export interface MatchDocument {
   id: string;
   board: Board;
+  boardSize: number;
+  winLength: number;
+  pieceLimit: number;
   currentPlayer: Player;
   phase: 'placement' | 'movement';
   status: MatchStatus;
   winner: Player | null;
+  winningLine: number[] | null;
   playerX: PlayerInfo;
   playerO: PlayerInfo | null;
   moveCount: number;
+  roundNumber: number;
+  scores: Record<string, number>;
+  winStreaks: Record<string, number>;
   createdAt: any;
   updatedAt: any;
 }

@@ -6,15 +6,18 @@ export type Player = 'X' | 'O';
 
 export type CellValue = Player | null;
 
-/** 9-element flat array representing the 3×3 board */
+/** Dynamic flat array representing the board of any size (size*size) */
 export type Board = CellValue[];
 
 export type GamePhase = 'placement' | 'movement';
 
-export type GameStatus = 'playing' | 'won' | 'draw';
+export type GameStatus = 'playing' | 'won' | 'draw' | 'next-round';
 
 export interface GameState {
   board: Board;
+  boardSize: number;
+  winLength: number;
+  pieceLimit: number;
   currentPlayer: Player;
   phase: GamePhase;
   status: GameStatus;
