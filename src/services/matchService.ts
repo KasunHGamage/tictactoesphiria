@@ -25,12 +25,13 @@ export async function createMatch(uid: string, displayName: string): Promise<str
     if (!snap.exists()) unique = true;
   }
 
+  const config = getGameConfig(1);
   const match: MatchDocument = {
     id: matchId,
-    board: createBoard(3),
-    boardSize: 3,
-    winLength: 3,
-    pieceLimit: 3,
+    board: createBoard(config.boardSize),
+    boardSize: config.boardSize,
+    winLength: config.winLength,
+    pieceLimit: config.pieceLimit,
     currentPlayer: 'X',
     phase: 'placement',
     status: 'waiting',

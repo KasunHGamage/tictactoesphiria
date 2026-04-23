@@ -373,7 +373,7 @@ export default function GameScreen({ navigation }: any) {
             <View style={styles.instructionCard}>
               <View style={styles.instrRow}>
                 <Text style={styles.instrEmoji}>🎯</Text>
-                <Text style={styles.instrLabel}>Goal: {state.winLength} in a row</Text>
+                <Text style={styles.instrLabel}>{state.boardSize}x{state.boardSize} • {state.winLength} in a row</Text>
               </View>
               <View style={styles.instrRow}>
                 <Text style={styles.instrEmoji}>📦</Text>
@@ -392,7 +392,10 @@ export default function GameScreen({ navigation }: any) {
           )}
 
           {/* Board */}
-          <View style={[styles.boardContainer, { width: BOARD_WIDTH, height: BOARD_WIDTH }]}>
+          <View 
+            key={`board-${state.boardSize}`}
+            style={[styles.boardContainer, { width: BOARD_WIDTH, height: BOARD_WIDTH }]}
+          >
             <View style={styles.board}>
               {state.board.map((cell, idx) => (
                 <Cell 

@@ -344,7 +344,7 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
             <View style={ms.instructionCard}>
               <View style={ms.instrRow}>
                 <Text style={ms.instrEmoji}>🎯</Text>
-                <Text style={ms.instrLabel}>Goal: {winLength} in a row</Text>
+                <Text style={ms.instrLabel}>{boardSize}x{boardSize} • {winLength} in a row</Text>
               </View>
               <View style={ms.instrRow}>
                 <Text style={ms.instrEmoji}>📦</Text>
@@ -362,7 +362,10 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
 
           {/* Main Board */}
           <Animated.View style={[ms.boardContainer, animatedBoardStyle]}>
-            <View style={[ms.board, { width: BOARD_WIDTH, height: BOARD_WIDTH }]}>
+            <View 
+              key={`board-${boardSize}`}
+              style={[ms.board, { width: BOARD_WIDTH, height: BOARD_WIDTH }]}
+            >
               {board.map((cell, idx) => (
                 <Cell 
                   key={idx} 
