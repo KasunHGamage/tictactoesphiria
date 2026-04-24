@@ -19,6 +19,7 @@ import LeaderboardScreen from '../screens/LeaderboardScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import MultiplayerGameScreen from '../screens/MultiplayerGameScreen';
 import GameScreen from '../screens/GameScreen';
+import GameSetupScreen from '../screens/GameSetupScreen';
 
 import { Ionicons } from '@expo/vector-icons';
 
@@ -57,8 +58,8 @@ function MainTabs() {
         tabBarStyle: {
           backgroundColor: '#0B0F1A',
           borderTopWidth: 0,
-          height: isIOS ? 88 : 70,
-          paddingBottom: isIOS ? 30 : 12,
+          height: 70,
+          paddingBottom: 12,
           paddingTop: 12,
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,
@@ -127,6 +128,7 @@ export default function RootNavigator() {
             <Stack.Screen name="Main" component={MainTabs} />
             <Stack.Screen name="MultiplayerGame" component={MultiplayerGameScreen} />
             <Stack.Screen name="SinglePlayer" component={GameScreen} />
+            <Stack.Screen name="GameSetup" component={GameSetupScreen} />
           </>
         ) : (
           <>

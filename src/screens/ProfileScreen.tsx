@@ -1,11 +1,8 @@
-// ─────────────────────────────────────────────
-//  ProfileScreen.tsx — User Stats & Logout
-// ─────────────────────────────────────────────
-
 import React, { useEffect, useState } from 'react';
+import ScreenWrapper from '../components/ScreenWrapper';
 import { 
-  StyleSheet, Text, Pressable, View, SafeAreaView, 
-  ActivityIndicator, ScrollView, RefreshControl 
+  StyleSheet, Text, Pressable, View, 
+  ActivityIndicator, RefreshControl 
 } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { getUserProfile, UserProfile } from '../services/userService';
@@ -48,7 +45,7 @@ export default function ProfileScreen() {
 
   if (loading) {
     return (
-      <View style={[s.safe, s.center]}>
+      <View style={[s.center, { flex: 1, backgroundColor: C.bg }]}>
         <ActivityIndicator color={C.accent} size="large" />
       </View>
     );
@@ -59,21 +56,18 @@ export default function ProfileScreen() {
     : '0.0';
 
   return (
-    <SafeAreaView style={s.safe}>
-      <ScrollView 
-        contentContainerStyle={s.scroll}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />}
-      >
-        <View style={s.header}>
-          <View style={s.avatarCircle}>
-            <Text style={s.avatarText}>{profile?.displayName?.charAt(0).toUpperCase()}</Text>
-          </View>
-          <Text style={s.name}>{profile?.displayName}</Text>
-          <View style={s.gameIdBadge}>
-            <Text style={s.gameIdText}>ID: {profile?.gameId}</Text>
-          </View>
+    <ScreenWrapper>
+      <View style={s.header}>
+        <View style={s.avatarCircle}>
+          <Text style={s.avatarText}>{profile?.displayName?.charAt(0).toUpperCase()}</Text>
         </View>
+        <Text style={s.name}>{profile?.displayName}</Text>
+        <View style={s.gameIdBadge}>
+          <Text style={s.gameIdText}>ID: {profile?.gameId}</Text>
+        </View>
+      </View>
 
+      <View style={s.content}>
         <View style={s.statsContainer}>
           <View style={s.statBox}>
             <Text style={s.statValue}>{profile?.wins}</Text>
@@ -103,19 +97,21 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <Pressable style={s.logoutBtn} onPress={logout}>
-          <Text style={s.logoutBtnText}>Logout</Text>
-        </Pressable>
-      </ScrollView>
-    </SafeAreaView>
+        <View style={s.footer}>
+          <Pressable style={s.logoutBtn} onPress={logout}>
+            <Text style={s.logoutBtnText}>Logout</Text>
+          </Pressable>
+        </View>
+      </View>
+    </ScreenWrapper>
   );
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
   center: { justifyContent: 'center', alignItems: 'center' },
-  scroll: { padding: 24, paddingBottom: 40 },
-  header: { alignItems: 'center', marginBottom: 32 },
+  header: { marginTop: 10, marginBottom: 20, alignItems: 'center' },
+  content: { marginTop: 20, gap: 20 },
+  footer: { marginTop: 20 },
   avatarCircle: { 
     width: 100, height: 100, borderRadius: 50, backgroundColor: C.card, 
     borderWidth: 2, borderColor: C.accent, justifyContent: 'center', alignItems: 'center',
@@ -127,12 +123,12 @@ const s = StyleSheet.create({
   gameIdText: { fontSize: 14, color: C.accentGlow, fontWeight: '700', letterSpacing: 1 },
   statsContainer: { 
     flexDirection: 'row', backgroundColor: C.card, borderRadius: 20, 
-    padding: 20, marginBottom: 32, borderWidth: 1, borderColor: C.border 
+    padding: 20, borderWidth: 1, borderColor: C.border 
   },
   statBox: { flex: 1, alignItems: 'center' },
   statValue: { fontSize: 24, fontWeight: '900', color: C.textPrimary, marginBottom: 4 },
   statLabel: { fontSize: 10, fontWeight: '800', color: C.textSecondary, letterSpacing: 1 },
-  infoSection: { marginBottom: 32 },
+  infoSection: { marginBottom: 12 },
   sectionTitle: { fontSize: 12, fontWeight: '800', color: C.textSecondary, letterSpacing: 2, marginBottom: 16 },
   infoRow: { 
     flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, 

@@ -1,11 +1,8 @@
-// ─────────────────────────────────────────────
-//  LeaderboardScreen.tsx — Global Rankings
-// ─────────────────────────────────────────────
-
 import React, { useEffect, useState } from 'react';
+import ScreenWrapper from '../components/ScreenWrapper';
 import { 
-  StyleSheet, Text, View, SafeAreaView, FlatList, 
-  ActivityIndicator, RefreshControl, Image 
+  StyleSheet, Text, View, FlatList, 
+  ActivityIndicator, RefreshControl
 } from 'react-native';
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -73,14 +70,14 @@ export default function LeaderboardScreen() {
 
   if (loading) {
     return (
-      <View style={[s.safe, s.center]}>
+      <View style={[s.center, { flex: 1, backgroundColor: C.bg }]}>
         <ActivityIndicator color={C.accent} size="large" />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={s.safe}>
+    <ScreenWrapper scroll={false} horizontalPadding={0}>
       <View style={s.header}>
         <Text style={s.title}>Leaderboard</Text>
         <Text style={s.subtitle}>Global top players by total wins</Text>
@@ -93,18 +90,18 @@ export default function LeaderboardScreen() {
         contentContainerStyle={s.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} />}
         ListEmptyComponent={<Text style={s.empty}>No rankings available yet.</Text>}
+        showsVerticalScrollIndicator={false}
       />
-    </SafeAreaView>
+    </ScreenWrapper>
   );
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
   center: { justifyContent: 'center', alignItems: 'center' },
-  header: { padding: 24, paddingBottom: 16 },
+  header: { marginTop: 10, marginBottom: 20, paddingHorizontal: 16 },
   title: { fontSize: 28, fontWeight: '900', color: C.accentGlow, letterSpacing: 1 },
   subtitle: { fontSize: 14, color: C.textSecondary, marginTop: 4 },
-  list: { paddingHorizontal: 24, paddingBottom: 40 },
+  list: { paddingHorizontal: 16, paddingBottom: 20 },
   item: { 
     flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, 
     borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: C.border 

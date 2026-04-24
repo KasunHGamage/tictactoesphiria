@@ -2,7 +2,7 @@
 //  gameEngine.ts — Pure game-logic functions
 // ─────────────────────────────────────────────
 
-import { Board, CellValue, Player } from './gameTypes';
+import { Board, CellValue, Player, GameConfig } from './gameTypes';
 
 /** Create a fresh, empty board of given size */
 export function createBoard(size: number = 3): Board {
@@ -17,9 +17,9 @@ export function getPlayerPieces(board: Board, player: Player): number[] {
   }, []);
 }
 
-/** True when the player still has fewer than pieceLimit pieces on the board */
-export function canPlace(board: Board, player: Player, pieceLimit: number = 3): boolean {
-  return getPlayerPieces(board, player).length < pieceLimit;
+/** True when the player still has fewer than maxPieces pieces on the board */
+export function canPlace(board: Board, player: Player, maxPieces: number = 3): boolean {
+  return getPlayerPieces(board, player).length < maxPieces;
 }
 
 /** Return indices of all empty cells */
@@ -65,66 +65,48 @@ export function movePiece(
   return next;
 }
 
-// Helper to check a specific line for a winner
-function checkLine(board: Board, line: number[], winLength: number): Player | null {
-  let count = 0;
-  let lastPlayer: Player | null = null;
-
-  for (const idx of line) {
-    const player = board[idx];
-    if (player && player === lastPlayer) {
-      count++;
-    } else {
-      count = player ? 1 : 0;
-      lastPlayer = player;
-    }
-    if (count === winLength) return lastPlayer;
-  }
-  return null;
-}
-
 /**
  * Check the board for a winner with dynamic size and winLength.
  */
-export function checkWinner(board: Board, size: number = 3, winLength: number = 3): Player | null {
-  const line = getWinningLine(board, size, winLength);
+export function checkWinner(board: Board, gridSize: number = 3, winLength: number = 3): Player | null {
+  const line = getWinningLine(board, gridSize, winLength);
   if (!line) return null;
   return board[line[0]] as Player;
 }
 
-export function getWinningLine(board: Board, size: number = 3, winLength: number = 3): number[] | null {
+export function getWinningLine(board: Board, gridSize: number = 3, winLength: number = 3): number[] | null {
   // 1. Rows
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c <= size - winLength; c++) {
+  for (let r = 0; r < gridSize; r++) {
+    for (let c = 0; c <= gridSize - winLength; c++) {
       const line: number[] = [];
-      for (let i = 0; i < winLength; i++) line.push(r * size + (c + i));
+      for (let i = 0; i < winLength; i++) line.push(r * gridSize + (c + i));
       if (line.every(i => board[i] && board[i] === board[line[0]])) return line;
     }
   }
 
   // 2. Columns
-  for (let c = 0; c < size; c++) {
-    for (let r = 0; r <= size - winLength; r++) {
+  for (let c = 0; c < gridSize; c++) {
+    for (let r = 0; r <= gridSize - winLength; r++) {
       const line: number[] = [];
-      for (let i = 0; i < winLength; i++) line.push((r + i) * size + c);
+      for (let i = 0; i < winLength; i++) line.push((r + i) * gridSize + c);
       if (line.every(i => board[i] && board[i] === board[line[0]])) return line;
     }
   }
 
   // 3. Diagonals (top-left to bottom-right)
-  for (let r = 0; r <= size - winLength; r++) {
-    for (let c = 0; c <= size - winLength; c++) {
+  for (let r = 0; r <= gridSize - winLength; r++) {
+    for (let c = 0; c <= gridSize - winLength; c++) {
       const line: number[] = [];
-      for (let i = 0; i < winLength; i++) line.push((r + i) * size + (c + i));
+      for (let i = 0; i < winLength; i++) line.push((r + i) * gridSize + (c + i));
       if (line.every(i => board[i] && board[i] === board[line[0]])) return line;
     }
   }
 
   // 4. Diagonals (top-right to bottom-left)
-  for (let r = 0; r <= size - winLength; r++) {
-    for (let c = winLength - 1; c < size; c++) {
+  for (let r = 0; r <= gridSize - winLength; r++) {
+    for (let c = winLength - 1; c < gridSize; c++) {
       const line: number[] = [];
-      for (let i = 0; i < winLength; i++) line.push((r + i) * size + (c - i));
+      for (let i = 0; i < winLength; i++) line.push((r + i) * gridSize + (c - i));
       if (line.every(i => board[i] && board[i] === board[line[0]])) return line;
     }
   }
@@ -135,19 +117,19 @@ export function getWinningLine(board: Board, size: number = 3, winLength: number
 /**
  * Determine whether the board is filled and no winner exists.
  */
-export function isDraw(board: Board, size: number = 3, winLength: number = 3): boolean {
-  return board.every((c: CellValue) => c !== null) && checkWinner(board, size, winLength) === null;
+export function isDraw(board: Board, gridSize: number = 3, winLength: number = 3): boolean {
+  return board.every((c: CellValue) => c !== null) && checkWinner(board, gridSize, winLength) === null;
 }
 
-export interface GameConfig {
-  boardSize: number;
-  winLength: number;
-  pieceLimit: number;
-}
+export const DEFAULT_CONFIG: GameConfig = {
+  gridSize: 3,
+  winLength: 3,
+  maxPieces: 3,
+  difficulty: 'easy'
+};
 
-export function getGameConfig(roundNumber: number): GameConfig {
-  if (roundNumber >= 3) {
-    return { boardSize: 4, winLength: 4, pieceLimit: 4 };
-  }
-  return { boardSize: 3, winLength: 3, pieceLimit: 3 };
+export function validateConfig(config: GameConfig): boolean {
+  if (config.winLength > config.gridSize) return false;
+  if (config.maxPieces > config.gridSize * config.gridSize) return false;
+  return true;
 }

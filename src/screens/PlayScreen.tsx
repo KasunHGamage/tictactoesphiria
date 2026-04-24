@@ -1,10 +1,7 @@
-// ─────────────────────────────────────────────
-//  PlayScreen.tsx — Lobby and Mode Selection
-// ─────────────────────────────────────────────
-
 import React, { useEffect, useState } from 'react';
+import ScreenWrapper from '../components/ScreenWrapper';
 import { 
-  StyleSheet, Text, View, SafeAreaView, Pressable, ScrollView, Platform, StatusBar, Alert 
+  StyleSheet, Text, View, Pressable, StatusBar, Alert 
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../auth/AuthContext';
@@ -25,7 +22,6 @@ export default function PlayScreen({ navigation }: any) {
   useEffect(() => {
     if (!user) return;
 
-    // Optional: Fetch online friends count for the badge
     const unsub = listenToFriends(user.uid, async (uids) => {
       const profiles = await Promise.all(uids.map(uid => getUserProfile(uid)));
       const online = profiles.filter(p => p?.status === 'online').length;
@@ -36,19 +32,19 @@ export default function PlayScreen({ navigation }: any) {
   }, [user]);
 
   return (
-    <SafeAreaView style={s.safe}>
+    <ScreenWrapper>
       <StatusBar barStyle="light-content" />
-      <ScrollView contentContainerStyle={s.scroll}>
-        <View style={s.header}>
-          <Text style={s.title}>Battle Arena</Text>
-          <Text style={s.subtitle}>Choose your challenge</Text>
-        </View>
+      <View style={s.header}>
+        <Text style={s.title}>Battle Arena</Text>
+        <Text style={s.subtitle}>Choose your challenge</Text>
+      </View>
 
+      <View style={s.content}>
         <View style={s.cardContainer}>
           {/* Practice vs AI */}
           <Pressable 
             style={({ pressed }) => [s.modeCard, pressed && s.cardPressed]}
-            onPress={() => navigation.navigate('SinglePlayer')}
+            onPress={() => navigation.navigate('GameSetup', { mode: 'ai' })}
           >
             <View style={s.iconCircle}>
               <Ionicons name="desktop-outline" size={32} color={C.textSecondary} />
@@ -62,7 +58,7 @@ export default function PlayScreen({ navigation }: any) {
           {/* Play with Friend — PREMIUM CARD */}
           <Pressable 
             style={({ pressed }) => [s.modeCard, s.friendCard, pressed && s.cardPressed]}
-            onPress={() => navigation.navigate('Friends')}
+            onPress={() => navigation.navigate('GameSetup', { mode: 'friend' })}
           >
             <View style={[s.iconCircle, s.friendIconCircle]}>
               <Ionicons name="people" size={32} color="#FFF" />
@@ -97,21 +93,23 @@ export default function PlayScreen({ navigation }: any) {
           </Pressable>
         </View>
 
-        <View style={s.tipBox}>
-          <Text style={s.tipTitle}>💡 PRO TIP</Text>
-          <Text style={s.tipText}>
-            Higher win rates move you up the global leaderboard. Keep practicing!
-          </Text>
+        <View style={s.footer}>
+          <View style={s.tipBox}>
+            <Text style={s.tipTitle}>💡 PRO TIP</Text>
+            <Text style={s.tipText}>
+              Higher win rates move you up the global leaderboard. Keep practicing!
+            </Text>
+          </View>
         </View>
-      </ScrollView>
-    </SafeAreaView>
+      </View>
+    </ScreenWrapper>
   );
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
-  scroll: { padding: 24, paddingBottom: 100 },
-  header: { marginBottom: 32 },
+  header: { marginTop: 10, marginBottom: 20 },
+  content: { marginTop: 20, gap: 20 },
+  footer: { marginTop: 20 },
   title: { fontSize: 32, fontWeight: '900', color: C.accentGlow, letterSpacing: 1 },
   subtitle: { fontSize: 16, color: C.textSecondary, marginTop: 4 },
   cardContainer: { gap: 16 },
@@ -133,7 +131,7 @@ const s = StyleSheet.create({
   },
   friendIconCircle: { backgroundColor: C.accent, borderColor: C.accentGlow },
   cardInfo: { flex: 1 },
-  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 8 },
   cardTitle: { fontSize: 18, fontWeight: '800', color: C.textPrimary },
   cardDesc: { fontSize: 13, color: C.textSecondary, lineHeight: 18 },
   hintText: { fontSize: 12, fontWeight: '700', color: C.accentGlow, marginTop: 8 },
@@ -144,7 +142,7 @@ const s = StyleSheet.create({
   onlineDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.success, marginRight: 6 },
   onlineText: { fontSize: 10, fontWeight: '800', color: C.success },
   tipBox: { 
-    marginTop: 40, backgroundColor: C.accentDim, borderRadius: 16, 
+    backgroundColor: C.accentDim, borderRadius: 16, 
     padding: 20, borderWidth: 1, borderColor: C.accent 
   },
   tipTitle: { fontSize: 12, fontWeight: '900', color: C.accentGlow, marginBottom: 8, letterSpacing: 1 },

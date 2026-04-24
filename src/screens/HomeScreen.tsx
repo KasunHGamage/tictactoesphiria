@@ -1,11 +1,7 @@
-// ─────────────────────────────────────────────
-//  HomeScreen.tsx — Dashboard & Overview
-// ─────────────────────────────────────────────
-
 import React, { useEffect, useState } from 'react';
+import ScreenWrapper from '../components/ScreenWrapper';
 import { 
-  StyleSheet, Text, View, SafeAreaView, ScrollView, 
-  Pressable, ActivityIndicator, Image 
+  StyleSheet, Text, View, Pressable, ActivityIndicator 
 } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { getUserProfile, UserProfile } from '../services/userService';
@@ -32,20 +28,20 @@ export default function HomeScreen({ navigation }: any) {
 
   if (loading) {
     return (
-      <View style={[s.safe, s.center]}>
+      <View style={[s.center, { flex: 1, backgroundColor: C.bg }]}>
         <ActivityIndicator color={C.accent} size="large" />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={s.safe}>
-      <ScrollView contentContainerStyle={s.scroll}>
-        <View style={s.welcomeSection}>
-          <Text style={s.welcomeLabel}>WELCOME BACK,</Text>
-          <Text style={s.userName}>{profile?.displayName} 🎮</Text>
-        </View>
+    <ScreenWrapper>
+      <View style={s.header}>
+        <Text style={s.welcomeLabel}>WELCOME BACK,</Text>
+        <Text style={s.userName}>{profile?.displayName} 🎮</Text>
+      </View>
 
+      <View style={s.content}>
         <View style={s.quickStats}>
           <View style={s.statItem}>
             <Text style={s.statVal}>{profile?.wins}</Text>
@@ -78,28 +74,27 @@ export default function HomeScreen({ navigation }: any) {
             <Text style={s.actionText}>Rankings</Text>
           </Pressable>
         </View>
-      </ScrollView>
-    </SafeAreaView>
+      </View>
+    </ScreenWrapper>
   );
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
   center: { justifyContent: 'center', alignItems: 'center' },
-  scroll: { padding: 24 },
-  welcomeSection: { marginBottom: 32 },
+  header: { marginTop: 10, marginBottom: 20 },
+  content: { marginTop: 20, gap: 20 },
   welcomeLabel: { fontSize: 12, fontWeight: '800', color: C.textSecondary, letterSpacing: 2 },
   userName: { fontSize: 32, fontWeight: '900', color: C.textPrimary, marginTop: 4 },
   quickStats: { 
     flexDirection: 'row', backgroundColor: C.card, borderRadius: 20, 
-    padding: 24, marginBottom: 32, borderWidth: 1, borderColor: C.border, alignItems: 'center' 
+    padding: 24, borderWidth: 1, borderColor: C.border, alignItems: 'center' 
   },
   statItem: { flex: 1, alignItems: 'center' },
   statVal: { fontSize: 20, fontWeight: '900', color: C.accentGlow },
   statLab: { fontSize: 10, fontWeight: '800', color: C.textSecondary, marginTop: 4, letterSpacing: 1 },
   statDivider: { width: 1, height: 30, backgroundColor: C.border },
   promoCard: { 
-    backgroundColor: C.accent, borderRadius: 24, padding: 24, marginBottom: 32,
+    backgroundColor: C.accent, borderRadius: 24, padding: 24,
     shadowColor: C.accent, shadowOpacity: 0.4, shadowRadius: 15
   },
   promoTitle: { fontSize: 22, fontWeight: '900', color: '#fff', marginBottom: 8 },

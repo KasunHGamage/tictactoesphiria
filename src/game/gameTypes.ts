@@ -13,11 +13,18 @@ export type GamePhase = 'placement' | 'movement';
 
 export type GameStatus = 'playing' | 'won' | 'draw' | 'next-round';
 
+export type Difficulty = 'easy' | 'medium' | 'hard' | 'auto';
+
+export interface GameConfig {
+  gridSize: number;
+  winLength: number;
+  maxPieces: number;
+  difficulty: Difficulty;
+}
+
 export interface GameState {
   board: Board;
-  boardSize: number;
-  winLength: number;
-  pieceLimit: number;
+  config: GameConfig;
   currentPlayer: Player;
   phase: GamePhase;
   status: GameStatus;

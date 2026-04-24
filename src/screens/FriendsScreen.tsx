@@ -1,10 +1,7 @@
-// ─────────────────────────────────────────────
-//  FriendsScreen.tsx — Social Hub
-// ─────────────────────────────────────────────
-
 import React, { useEffect, useState } from 'react';
+import ScreenWrapper from '../components/ScreenWrapper';
 import { 
-  StyleSheet, Text, View, SafeAreaView, ActivityIndicator, 
+  StyleSheet, Text, View, ActivityIndicator, 
   TextInput, Pressable, Alert, SectionList 
 } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
@@ -129,11 +126,11 @@ export default function FriendsScreen() {
   ];
 
   if (loading) {
-    return <View style={[s.safe, s.center]}><ActivityIndicator color={C.accent} size="large" /></View>;
+    return <View style={[s.center, { flex: 1, backgroundColor: C.bg }]}><ActivityIndicator color={C.accent} size="large" /></View>;
   }
 
   return (
-    <SafeAreaView style={s.safe}>
+    <ScreenWrapper scroll={false} horizontalPadding={0}>
       <View style={s.header}>
         <Text style={s.title}>Social Hub</Text>
         <View style={s.searchContainer}>
@@ -161,21 +158,21 @@ export default function FriendsScreen() {
           </View>
         )}
         contentContainerStyle={s.list}
+        showsVerticalScrollIndicator={false}
       />
-    </SafeAreaView>
+    </ScreenWrapper>
   );
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
   center: { justifyContent: 'center', alignItems: 'center' },
-  header: { padding: 24, paddingBottom: 16 },
+  header: { marginTop: 10, marginBottom: 20, paddingHorizontal: 16 },
   title: { fontSize: 28, fontWeight: '900', color: C.accentGlow, letterSpacing: 1, marginBottom: 20 },
   searchContainer: { flexDirection: 'row', gap: 10 },
   searchInput: { flex: 1, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 12, color: C.textPrimary, letterSpacing: 2 },
   searchBtn: { backgroundColor: C.accent, borderRadius: 12, paddingHorizontal: 20, justifyContent: 'center' },
   searchBtnText: { color: '#fff', fontWeight: '800' },
-  list: { paddingHorizontal: 24, paddingBottom: 100 }, // space for tab bar
+  list: { paddingHorizontal: 16, paddingBottom: 20 },
   sectionHeader: { marginTop: 24, marginBottom: 12 },
   sectionTitle: { fontSize: 12, fontWeight: '800', color: C.textSecondary, letterSpacing: 2 },
   item: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: 16, padding: 16, marginBottom: 8, borderWidth: 1, borderColor: C.border },

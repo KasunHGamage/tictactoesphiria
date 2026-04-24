@@ -4,9 +4,9 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { MatchDocument, MatchStatus, MovePayload, PlayerInfo } from './matchTypes';
-import { Board, Player } from '../game/gameTypes';
+import { Board, Player, GameConfig } from '../game/gameTypes';
 import { 
-  createBoard, placePiece, movePiece, checkWinner, canPlace, getWinningLine, getGameConfig 
+  createBoard, placePiece, movePiece, checkWinner, canPlace, getWinningLine, DEFAULT_CONFIG 
 } from '../game/gameEngine';
 
 const matchRef = (id: string) => doc(db, 'matches', id);
@@ -16,7 +16,7 @@ function generateMatchId() {
   return Array.from({ length: 6 }, () => CHARS[Math.floor(Math.random() * CHARS.length)]).join('');
 }
 
-export async function createMatch(uid: string, displayName: string): Promise<string> {
+export async function createMatch(uid: string, displayName: string, config: GameConfig = DEFAULT_CONFIG): Promise<string> {
   let matchId = '';
   let unique = false;
   while (!unique) {
@@ -25,13 +25,13 @@ export async function createMatch(uid: string, displayName: string): Promise<str
     if (!snap.exists()) unique = true;
   }
 
-  const config = getGameConfig(1);
   const match: MatchDocument = {
     id: matchId,
-    board: createBoard(config.boardSize),
-    boardSize: config.boardSize,
+    board: createBoard(config.gridSize),
+    gridSize: config.gridSize,
     winLength: config.winLength,
-    pieceLimit: config.pieceLimit,
+    maxPieces: config.maxPieces,
+    difficulty: config.difficulty,
     currentPlayer: 'X',
     phase: 'placement',
     status: 'waiting',
@@ -90,14 +90,14 @@ export async function applyMove(matchId: string, payload: MovePayload, playerSid
 
     if (!nextBoard) throw new Error('Invalid move');
 
-    const winningLine = getWinningLine(nextBoard, data.boardSize, data.winLength);
+    const winningLine = getWinningLine(nextBoard, data.gridSize, data.winLength);
     const winner = winningLine ? playerSide : null;
     const nextPlayer = playerSide === 'X' ? 'O' : 'X';
 
     const updates: any = {
       board: nextBoard,
       currentPlayer: nextPlayer,
-      phase: canPlace(nextBoard, nextPlayer, data.pieceLimit) ? 'placement' : 'movement',
+      phase: canPlace(nextBoard, nextPlayer, data.maxPieces) ? 'placement' : 'movement',
       moveCount: data.moveCount + 1,
       updatedAt: serverTimestamp(),
     };
@@ -125,16 +125,12 @@ export async function startNextRound(matchId: string): Promise<void> {
     if (!snap.exists()) return;
     const data = snap.data() as MatchDocument;
     
-    if (data.status !== 'finished') return;
+    if (data.status !== 'finished' && data.status !== 'ended') return;
 
     const nextRound = data.roundNumber + 1;
-    const config = getGameConfig(nextRound);
 
     tx.update(matchRef(matchId), {
-      board: createBoard(config.boardSize),
-      boardSize: config.boardSize,
-      winLength: config.winLength,
-      pieceLimit: config.pieceLimit,
+      board: createBoard(data.gridSize),
       roundNumber: nextRound,
       currentPlayer: 'X', 
       phase: 'placement',
@@ -148,5 +144,19 @@ export async function startNextRound(matchId: string): Promise<void> {
 }
 
 export async function resignMatch(matchId: string, resigningUid: string): Promise<void> {
-  await updateDoc(matchRef(matchId), { status: 'finished', updatedAt: serverTimestamp() });
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(matchRef(matchId));
+    if (!snap.exists()) return;
+    const data = snap.data() as MatchDocument;
+
+    if (data.status !== 'active') return;
+
+    const winner = resigningUid === data.playerX.uid ? 'O' : 'X';
+    
+    tx.update(matchRef(matchId), { 
+      status: 'ended', 
+      winner,
+      updatedAt: serverTimestamp() 
+    });
+  });
 }

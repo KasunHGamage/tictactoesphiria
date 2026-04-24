@@ -4,6 +4,7 @@
 
 import { doc, getDoc, setDoc, query, collection, where, getDocs, serverTimestamp, updateDoc, increment } from 'firebase/firestore';
 import { db } from './firebase';
+import { Difficulty } from '../game/gameTypes';
 
 export interface UserProfile {
   uid: string;
@@ -18,8 +19,20 @@ export interface UserProfile {
   createdAt: any;
 }
 
+/**
+ * Level up every 100 XP (approx 2 wins)
+ */
 export function calculateLevel(xp: number): number {
-  return Math.floor(Math.sqrt(xp / 100)) || 1;
+  return Math.floor(xp / 100) + 1;
+}
+
+/**
+ * Get difficulty based on level for "auto" mode
+ */
+export function getAutoDifficulty(level: number): Difficulty {
+  if (level <= 3) return 'easy';
+  if (level <= 6) return 'medium';
+  return 'hard';
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -36,14 +49,12 @@ function generateGameId(): string {
 
 /**
  * Creates a new user profile in Firestore after successful signup.
- * Ensures the gameId is unique.
  */
 export async function createUserProfile(uid: string, email: string, displayName: string): Promise<UserProfile> {
   let gameId = '';
   let unique = false;
   let attempts = 0;
 
-  // Ensure gameId uniqueness
   while (!unique && attempts < 10) {
     gameId = generateGameId();
     const q = query(collection(db, 'users'), where('gameId', '==', gameId));
@@ -73,17 +84,11 @@ export async function createUserProfile(uid: string, email: string, displayName:
   return profile;
 }
 
-/**
- * Fetch a user profile by UID.
- */
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   const snap = await getDoc(doc(db, 'users', uid));
   return snap.exists() ? (snap.data() as UserProfile) : null;
 }
 
-/**
- * Fetch a user profile by Game ID (for friend searches).
- */
 export async function getUserByGameId(gameId: string): Promise<UserProfile | null> {
   const q = query(collection(db, 'users'), where('gameId', '==', gameId.toUpperCase()));
   const querySnapshot = await getDocs(q);
@@ -91,21 +96,16 @@ export async function getUserByGameId(gameId: string): Promise<UserProfile | nul
   return querySnapshot.docs[0].data() as UserProfile;
 }
 
-/**
- * Update user online status.
- */
 export async function updateUserStatus(uid: string, status: 'online' | 'offline' | 'in-match'): Promise<void> {
   await updateDoc(doc(db, 'users', uid), { status });
 }
 
-/**
- * Record match result with XP and Streaks.
- */
 export async function recordMatchResult(uid: string, isWin: boolean, streak: number = 0): Promise<void> {
-  const xpGained = (isWin ? 50 : 20) + (streak * 10);
+  const xpGained = (isWin ? 50 : 10) + (streak * 10);
   
   const userRef = doc(db, 'users', uid);
   const snap = await getDoc(userRef);
+  if (!snap.exists()) return;
   const currentData = snap.data() as UserProfile;
   
   const nextXP = (currentData.xp || 0) + xpGained;

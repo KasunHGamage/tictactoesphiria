@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState, useContext } from 'react';
+import ScreenWrapper from '../components/ScreenWrapper';
 import {
-  Platform, Pressable, SafeAreaView, StatusBar,
+  Platform, Pressable, StatusBar,
   StyleSheet, Text, useWindowDimensions, View, Alert, ScrollView
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { 
   useSharedValue, useAnimatedStyle, withTiming, withSequence, 
   withDelay, withRepeat, Easing, useDerivedValue 
@@ -11,14 +13,14 @@ import * as Haptics from 'expo-haptics';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { Ionicons } from '@expo/vector-icons';
 
-import { GamePhase, GameState, Player, Board } from '../game/gameTypes';
+import { GamePhase, GameState, Player, Board, GameConfig, Difficulty } from '../game/gameTypes';
 import {
   canPlace, checkWinner, createBoard, getPlayerPieces,
-  isDraw, movePiece, placePiece, getWinningLine, getGameConfig
+  isDraw, movePiece, placePiece, getWinningLine, DEFAULT_CONFIG
 } from '../game/gameEngine';
 import { getAIMove } from '../game/aiEngine';
 import { AuthContext } from '../auth/AuthContext';
-import { recordMatchResult, getUserProfile } from '../services/userService';
+import { recordMatchResult, getUserProfile, getAutoDifficulty } from '../services/userService';
 
 // ── Colors ────────────────────────────────────────────────────────
 
@@ -31,23 +33,9 @@ const C = {
   gold: '#FFD700',
 };
 
-// ── Bot Definitions ───────────────────────────────────────────────
-
-const BOTS = [
-  { name: 'Nova 🤖', level: 1, difficulty: 'random' },
-  { name: 'Titan ⚡', level: 4, difficulty: 'medium' },
-  { name: 'Phantom 🧠', level: 7, difficulty: 'hard' },
-];
-
-function getBotForLevel(level: number) {
-  if (level >= 7) return BOTS[2];
-  if (level >= 4) return BOTS[1];
-  return BOTS[0];
-}
-
 // ── Components ────────────────────────────────────────────────────
 
-function StrikeLine({ winLine, layouts, boardSize }: { winLine: number[] | null, layouts: Record<number, any>, boardSize: number }) {
+function StrikeLine({ winLine, layouts }: { winLine: number[] | null, layouts: Record<number, any> }) {
   const progress = useSharedValue(0);
   const winLineValue = useDerivedValue(() => winLine);
 
@@ -138,10 +126,13 @@ function Cell({ index, value, isSelected, isWinCell, boardSize, fontSize, disabl
 
 // ── Main Screen ───────────────────────────────────────────────────
 
-export default function GameScreen({ navigation }: any) {
+export default function GameScreen({ navigation, route }: any) {
   const { user } = useContext(AuthContext);
   const { width: W } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const BOARD_WIDTH = W * 0.9;
+
+  const config: GameConfig = route.params?.config || DEFAULT_CONFIG;
 
   const [roundNumber, setRoundNumber] = useState(1);
   const [winStreak, setWinStreak] = useState(0);
@@ -149,10 +140,8 @@ export default function GameScreen({ navigation }: any) {
   const [level, setLevel] = useState(1);
   
   const [state, setState] = useState<GameState>(() => ({
-    board: createBoard(3),
-    boardSize: 3,
-    winLength: 3,
-    pieceLimit: 3,
+    board: createBoard(config.gridSize),
+    config: config,
     currentPlayer: 'X',
     phase: 'placement',
     status: 'playing',
@@ -188,7 +177,7 @@ export default function GameScreen({ navigation }: any) {
     }
   }, [user?.uid]);
 
-  const bot = getBotForLevel(level);
+  const activeDifficulty = config.difficulty === 'auto' ? getAutoDifficulty(level) : config.difficulty;
 
   const triggerAI = useCallback(() => {
     if (isAITurnRunning.current || state.status !== 'playing') return;
@@ -196,9 +185,8 @@ export default function GameScreen({ navigation }: any) {
     setIsThinking(true);
 
     setTimeout(() => {
-      // READ ONLY FROM REF TO AVOID STALE STATE
       const currentBoard = boardRef.current;
-      const move = getAIMove(currentBoard, state.boardSize, state.winLength, state.pieceLimit);
+      const move = getAIMove(currentBoard, activeDifficulty, config.gridSize, config.winLength, config.maxPieces);
       
       let nextBoard: Board | null;
       if (move.fromIndex !== undefined) {
@@ -208,15 +196,15 @@ export default function GameScreen({ navigation }: any) {
       }
 
       if (nextBoard) {
-        const winningLine = getWinningLine(nextBoard, state.boardSize, state.winLength);
+        const winningLine = getWinningLine(nextBoard, config.gridSize, config.winLength);
         const winner = winningLine ? 'O' : null;
-        const draw = !winner && isDraw(nextBoard, state.boardSize, state.winLength);
+        const draw = !winner && isDraw(nextBoard, config.gridSize, config.winLength);
 
         setState(prev => ({
           ...prev,
           board: nextBoard!,
           currentPlayer: 'X',
-          phase: canPlace(nextBoard!, 'X', state.pieceLimit) ? 'placement' : 'movement',
+          phase: canPlace(nextBoard!, 'X', config.maxPieces) ? 'placement' : 'movement',
           status: winner ? 'won' : draw ? 'draw' : 'playing',
           winner: winner ?? null,
           winningLine: winningLine ?? null,
@@ -227,7 +215,7 @@ export default function GameScreen({ navigation }: any) {
       setIsThinking(false);
       isAITurnRunning.current = false;
     }, 500);
-  }, [state.boardSize, state.winLength, state.pieceLimit, state.status]);
+  }, [config, activeDifficulty, state.status]);
 
   // Round End Lifecycle
   useEffect(() => {
@@ -271,21 +259,17 @@ export default function GameScreen({ navigation }: any) {
 
   const startNextRound = () => {
     const nextR = roundNumber + 1;
-    const config = getGameConfig(nextR);
-
     setRoundNumber(nextR);
-    setState({
-      board: createBoard(config.boardSize),
-      boardSize: config.boardSize,
-      winLength: config.winLength,
-      pieceLimit: config.pieceLimit,
+    setState(prev => ({
+      ...prev,
+      board: createBoard(config.gridSize),
       currentPlayer: 'X',
       phase: 'placement',
       status: 'playing',
       winner: null,
       winningLine: null,
       selectedIndex: null,
-    });
+    }));
     setTileLayouts({});
     setShowConfetti(false);
     setXpGained(null);
@@ -298,7 +282,8 @@ export default function GameScreen({ navigation }: any) {
 
   const handleCellPress = async (index: number) => {
     if (state.status !== 'playing' || state.currentPlayer !== 'X' || isThinking || isAITurnRunning.current) return;
-    const { board, phase, selectedIndex, boardSize, winLength, pieceLimit } = state;
+    const { board, phase, selectedIndex } = state;
+    const { gridSize, winLength, maxPieces } = config;
 
     let nextState: Partial<GameState> | null = null;
 
@@ -306,14 +291,14 @@ export default function GameScreen({ navigation }: any) {
       if (board[index] !== null) return;
       const nextBoard = placePiece(board, index, 'X');
       if (!nextBoard) return;
-      const winningLine = getWinningLine(nextBoard, boardSize, winLength);
+      const winningLine = getWinningLine(nextBoard, gridSize, winLength);
       const winner = winningLine ? 'X' : null;
       
       nextState = {
         board: nextBoard,
         currentPlayer: winner ? 'X' : 'O',
-        phase: canPlace(nextBoard, 'O', pieceLimit) ? 'placement' : 'movement',
-        status: winner ? 'won' : isDraw(nextBoard, boardSize, winLength) ? 'draw' : 'playing',
+        phase: canPlace(nextBoard, 'O', maxPieces) ? 'placement' : 'movement',
+        status: winner ? 'won' : isDraw(nextBoard, gridSize, winLength) ? 'draw' : 'playing',
         winner,
         winningLine,
       };
@@ -328,14 +313,14 @@ export default function GameScreen({ navigation }: any) {
         if (board[index] !== null) return;
         const nextBoard = movePiece(board, selectedIndex, index, 'X');
         if (!nextBoard) return;
-        const winningLine = getWinningLine(nextBoard, boardSize, winLength);
+        const winningLine = getWinningLine(nextBoard, gridSize, winLength);
         const winner = winningLine ? 'X' : null;
         
         nextState = {
           board: nextBoard,
           currentPlayer: winner ? 'X' : 'O',
-          phase: canPlace(nextBoard, 'O', pieceLimit) ? 'placement' : 'movement',
-          status: winner ? 'won' : isDraw(nextBoard, boardSize, winLength) ? 'draw' : 'playing',
+          phase: canPlace(nextBoard, 'O', maxPieces) ? 'placement' : 'movement',
+          status: winner ? 'won' : isDraw(nextBoard, gridSize, winLength) ? 'draw' : 'playing',
           winner,
           winningLine,
           selectedIndex: null,
@@ -346,7 +331,6 @@ export default function GameScreen({ navigation }: any) {
     if (nextState) {
       setState(prev => {
         const merged = { ...prev, ...nextState };
-        // Trigger AI only if game still active and turn shifted to O
         if (merged.status === 'playing' && merged.currentPlayer === 'O') {
           triggerAI();
         }
@@ -355,7 +339,7 @@ export default function GameScreen({ navigation }: any) {
     }
   };
 
-  const cellSize = BOARD_WIDTH / state.boardSize;
+  const cellSize = BOARD_WIDTH / config.gridSize;
   const boardFontSize = Math.floor(cellSize * 0.44);
 
   const animatedResultStyle = useAnimatedStyle(() => ({
@@ -364,78 +348,78 @@ export default function GameScreen({ navigation }: any) {
   }));
 
   return (
-    <View style={styles.root}>
-      <SafeAreaView style={styles.safe}>
-        <StatusBar barStyle="light-content" backgroundColor={C.bg} />
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          
-          {/* Header */}
-          <View style={styles.header}>
-            <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-              <Ionicons name="close" size={24} color={C.xColor} />
-            </Pressable>
-            <View style={styles.roundBadge}><Text style={styles.roundTxt}>ROUND {roundNumber}</Text></View>
-            <View style={styles.levelBadge}><Text style={styles.levelTxt}>LV {level}</Text></View>
+    <ScreenWrapper scroll={true} horizontalPadding={0}>
+      <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+      
+      {/* Header */}
+      <View style={styles.header}>
+        <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="close" size={24} color={C.xColor} />
+        </Pressable>
+        <View style={styles.roundBadge}><Text style={styles.roundTxt}>ROUND {roundNumber}</Text></View>
+        <View style={styles.levelBadge}><Text style={styles.levelTxt}>LV {level}</Text></View>
+      </View>
+
+      <View style={styles.content}>
+        {/* Player HUD */}
+        <View style={styles.players}>
+          <View style={[styles.playerCard, state.currentPlayer === 'X' && state.status === 'playing' && styles.activeCard]}>
+            <Text style={[styles.symbol, { color: C.xColor }]}>X</Text>
+            <Text style={styles.name}>You</Text>
+            {winStreak > 0 && <Text style={styles.streak}>🔥 {winStreak}</Text>}
           </View>
-
-          {/* Player HUD */}
-          <View style={styles.players}>
-            <View style={[styles.playerCard, state.currentPlayer === 'X' && state.status === 'playing' && styles.activeCard]}>
-              <Text style={[styles.symbol, { color: C.xColor }]}>X</Text>
-              <Text style={styles.name}>You</Text>
-              {winStreak > 0 && <Text style={styles.streak}>🔥 {winStreak}</Text>}
-            </View>
-            <View style={styles.vsContainer}><Text style={styles.vsTxt}>VS</Text></View>
-            <View style={[styles.playerCard, state.currentPlayer === 'O' && state.status === 'playing' && styles.activeCard]}>
-              <Text style={[styles.symbol, { color: C.oColor }]}>O</Text>
-              <Text style={styles.name}>{bot.name}</Text>
-              <Text style={styles.botLevel}>Bot Lv.{bot.level}</Text>
-            </View>
+          <View style={styles.vsContainer}><Text style={styles.vsTxt}>VS</Text></View>
+          <View style={[styles.playerCard, state.currentPlayer === 'O' && state.status === 'playing' && styles.activeCard]}>
+            <Text style={[styles.symbol, { color: C.oColor }]}>O</Text>
+            <Text style={styles.name}>{activeDifficulty.toUpperCase()} AI</Text>
+            <Text style={styles.botLevel}>Mode: {config.difficulty}</Text>
           </View>
+        </View>
 
-          {/* Instruction Card */}
-          {state.status === 'playing' && (
-            <View style={styles.instructionCard}>
-              <View style={styles.instrRow}>
-                <Text style={styles.instrEmoji}>🎯</Text>
-                <Text style={styles.instrLabel}>{state.boardSize}x{state.boardSize} • {state.winLength} in a row</Text>
-              </View>
-              <View style={styles.instrRow}>
-                <Text style={styles.instrEmoji}>📦</Text>
-                <Text style={styles.instrLabel}>Pieces: {getPlayerPieces(state.board, 'X').length} / {state.pieceLimit}</Text>
-              </View>
-              <View style={styles.instrHintBox}>
-                <Text style={styles.instrHintTxt}>
-                  {isThinking 
-                    ? '⌛ AI is thinking...' 
-                    : state.phase === 'placement' 
-                      ? `👉 Place ${state.pieceLimit - getPlayerPieces(state.board, 'X').length} more` 
-                      : '👉 Move a piece'}
-                </Text>
-              </View>
+        {/* Instruction Card */}
+        {state.status === 'playing' && (
+          <View style={styles.instructionCard}>
+            <View style={styles.instrRow}>
+              <Text style={styles.instrEmoji}>🎯</Text>
+              <Text style={styles.instrLabel}>{config.gridSize}x{config.gridSize} • {config.winLength} in a row</Text>
             </View>
-          )}
-
-          {/* Board */}
-          <View 
-            key={`board-${state.boardSize}`}
-            style={[styles.boardContainer, { width: BOARD_WIDTH, height: BOARD_WIDTH }]}
-          >
-            <View style={styles.board}>
-              {state.board.map((cell, idx) => (
-                <Cell 
-                  key={idx} index={idx} value={cell} boardSize={state.boardSize}
-                  isSelected={state.selectedIndex === idx} isWinCell={state.winningLine?.includes(idx)}
-                  fontSize={boardFontSize} disabled={state.currentPlayer !== 'X' || state.status !== 'playing' || isThinking}
-                  onPress={handleCellPress} onLayout={(i: number, l: any) => setTileLayouts(p => ({ ...p, [i]: l }))}
-                />
-              ))}
-              <StrikeLine winLine={state.winningLine || null} layouts={tileLayouts} boardSize={state.boardSize} />
+            <View style={styles.instrRow}>
+              <Text style={styles.instrEmoji}>📦</Text>
+              <Text style={styles.instrLabel}>Pieces: {getPlayerPieces(state.board, 'X').length} / {config.maxPieces}</Text>
+            </View>
+            <View style={styles.instrHintBox}>
+              <Text style={styles.instrHintTxt}>
+                {isThinking 
+                  ? '⌛ AI is thinking...' 
+                  : state.phase === 'placement' 
+                    ? `👉 Place ${config.maxPieces - getPlayerPieces(state.board, 'X').length} more` 
+                    : '👉 Move a piece'}
+              </Text>
             </View>
           </View>
+        )}
 
-          {/* Result Overlay */}
-          {state.status !== 'playing' && (
+        {/* Board */}
+        <View 
+          key={`board-${config.gridSize}`}
+          style={[styles.boardContainer, { width: BOARD_WIDTH, height: BOARD_WIDTH, alignSelf: 'center' }]}
+        >
+          <View style={styles.board}>
+            {state.board.map((cell, idx) => (
+              <Cell 
+                key={idx} index={idx} value={cell} boardSize={config.gridSize}
+                isSelected={state.selectedIndex === idx} isWinCell={state.winningLine?.includes(idx)}
+                fontSize={boardFontSize} disabled={state.currentPlayer !== 'X' || state.status !== 'playing' || isThinking}
+                onPress={handleCellPress} onLayout={(i: number, l: any) => setTileLayouts(p => ({ ...p, [i]: l }))}
+              />
+            ))}
+            <StrikeLine winLine={state.winningLine || null} layouts={tileLayouts} />
+          </View>
+        </View>
+
+        {/* Result Overlay */}
+        {state.status !== 'playing' && (
+          <View style={styles.footer}>
             <View style={styles.resultWrapper}>
               <Animated.View style={[styles.resultBanner, animatedResultStyle]}>
                 <Text style={[styles.resultTitle, { color: state.winner === 'X' ? C.gold : state.winner === 'O' ? C.xColor : C.textPrimary }]}>
@@ -445,29 +429,33 @@ export default function GameScreen({ navigation }: any) {
                 <Text style={styles.nextRoundTxt}>Next round starting...</Text>
               </Animated.View>
             </View>
-          )}
+          </View>
+        )}
+      </View>
 
-        </ScrollView>
-      </SafeAreaView>
       <View pointerEvents="none" style={styles.confettiOverlay}>
         {showConfetti && <ConfettiCannon count={200} origin={{ x: W / 2, y: -20 }} fallSpeed={3000} />}
       </View>
-    </View>
+    </ScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
-  safe: { flex: 1 },
-  scroll: { paddingBottom: 60, alignItems: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', width: '100%', paddingHorizontal: 20, marginTop: 10, marginBottom: 15 },
+  header: { 
+    flexDirection: 'row', alignItems: 'center', width: '100%', 
+    paddingHorizontal: 16, marginTop: 10, marginBottom: 20, gap: 10 
+  },
   backBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.card, justifyContent: 'center', alignItems: 'center' },
-  roundBadge: { backgroundColor: C.accent, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, marginHorizontal: 10 },
+  roundBadge: { backgroundColor: C.accent, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
   roundTxt: { color: '#FFF', fontWeight: '900', fontSize: 12 },
   levelBadge: { backgroundColor: C.card, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: C.border },
   levelTxt: { color: C.gold, fontWeight: '900', fontSize: 12 },
   
-  players: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 15, width: '100%', paddingHorizontal: 20, marginBottom: 20 },
+  content: { marginTop: 20, gap: 20, paddingHorizontal: 16 },
+  players: { 
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', 
+    gap: 15, width: '100%'
+  },
   playerCard: { flex: 1, backgroundColor: C.card, borderRadius: 20, padding: 15, alignItems: 'center', borderWidth: 1, borderColor: C.border },
   activeCard: { borderColor: C.accent, shadowColor: C.accent, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
   symbol: { fontSize: 24, fontWeight: '900', marginBottom: 2 },
@@ -477,18 +465,18 @@ const styles = StyleSheet.create({
   vsContainer: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.surface, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: C.border },
   vsTxt: { color: C.accentGlow, fontWeight: '900', fontSize: 11 },
 
-  instructionCard: { width: '90%', backgroundColor: C.card, borderRadius: 20, padding: 15, marginBottom: 20, borderWidth: 1, borderColor: C.border },
-  instrRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  instrEmoji: { fontSize: 16, marginRight: 8 },
+  instructionCard: { width: '100%', backgroundColor: C.card, borderRadius: 20, padding: 15, borderWidth: 1, borderColor: C.border },
+  instrRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 8 },
+  instrEmoji: { fontSize: 16 },
   instrLabel: { color: C.textPrimary, fontSize: 13, fontWeight: '700' },
   instrHintBox: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.border },
   instrHintTxt: { color: C.accentGlow, fontSize: 13, fontWeight: '800' },
 
   boardContainer: { shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 20, elevation: 15 },
-  board: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', backgroundColor: C.surface, borderRadius: 20, overflow: 'hidden', borderWidth: 2, borderColor: C.border },
-  cellInner: { flex: 1, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: C.border },
-
-  resultWrapper: { width: '100%', paddingHorizontal: 20, marginTop: 20 },
+  board: { flex: 0, flexDirection: 'row', flexWrap: 'wrap', backgroundColor: C.surface, borderRadius: 20, overflow: 'hidden', borderWidth: 2, borderColor: C.border },
+  
+  footer: { marginTop: 20, marginBottom: 40 },
+  resultWrapper: { width: '100%' },
   resultBanner: { backgroundColor: C.card, borderRadius: 24, padding: 25, alignItems: 'center', borderWidth: 2, borderColor: C.accentDim },
   resultTitle: { fontSize: 28, fontWeight: '900', marginBottom: 10 },
   xpBadge: { backgroundColor: '#FFD70022', borderColor: C.gold, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, marginBottom: 12 },

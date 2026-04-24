@@ -2,9 +2,9 @@
 //  matchTypes.ts — Match and Invite data structures
 // ─────────────────────────────────────────────
 
-import { Board, Player } from '../game/gameTypes';
+import { Board, Player, Difficulty } from '../game/gameTypes';
 
-export type MatchStatus = 'waiting' | 'active' | 'finished';
+export type MatchStatus = 'waiting' | 'active' | 'finished' | 'ended';
 export type InviteStatus = 'pending' | 'accepted' | 'rejected';
 
 export interface PlayerInfo {
@@ -15,9 +15,10 @@ export interface PlayerInfo {
 export interface MatchDocument {
   id: string;
   board: Board;
-  boardSize: number;
+  gridSize: number;
   winLength: number;
-  pieceLimit: number;
+  maxPieces: number;
+  difficulty: Difficulty;
   currentPlayer: Player;
   phase: 'placement' | 'movement';
   status: MatchStatus;

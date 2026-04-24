@@ -3,9 +3,10 @@
 // ─────────────────────────────────────────────
 
 import React, { useState } from 'react';
+import ScreenWrapper from '../components/ScreenWrapper';
 import { 
   StyleSheet, Text, TextInput, Pressable, View, 
-  SafeAreaView, ActivityIndicator, Alert, KeyboardAvoidingView, Platform 
+  ActivityIndicator, Alert, KeyboardAvoidingView, Platform 
 } from 'react-native';
 import { signUp } from '../services/authService';
 
@@ -33,12 +34,14 @@ export default function SignupScreen({ navigation }: any) {
   };
 
   return (
-    <SafeAreaView style={s.safe}>
+    <ScreenWrapper>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.flex}>
-        <View style={s.container}>
+        <View style={s.header}>
           <Text style={s.title}>Join the Game</Text>
           <Text style={s.subtitle}>Create an account to start playing</Text>
+        </View>
 
+        <View style={s.content}>
           <View style={s.inputGroup}>
             <Text style={s.label}>FULL NAME</Text>
             <TextInput 
@@ -75,30 +78,33 @@ export default function SignupScreen({ navigation }: any) {
             />
           </View>
 
-          <Pressable 
-            style={[s.btn, loading && s.btnDisabled]} 
-            onPress={handleSignup}
-            disabled={loading}
-          >
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Create Account</Text>}
-          </Pressable>
+          <View style={s.footer}>
+            <Pressable 
+              style={[s.btn, loading && s.btnDisabled]} 
+              onPress={handleSignup}
+              disabled={loading}
+            >
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Create Account</Text>}
+            </Pressable>
 
-          <Pressable onPress={() => navigation.navigate('Login')} style={s.link}>
-            <Text style={s.linkText}>Already have an account? <Text style={s.linkHighlight}>Login</Text></Text>
-          </Pressable>
+            <Pressable onPress={() => navigation.navigate('Login')} style={s.link}>
+              <Text style={s.linkText}>Already have an account? <Text style={s.linkHighlight}>Login</Text></Text>
+            </Pressable>
+          </View>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </ScreenWrapper>
   );
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
   flex: { flex: 1 },
-  container: { flex: 1, padding: 24, justifyContent: 'center' },
+  header: { marginTop: 40, marginBottom: 20 },
+  content: { marginTop: 20, gap: 20 },
+  footer: { marginTop: 20 },
   title: { fontSize: 32, fontWeight: '900', color: C.accent, marginBottom: 8, letterSpacing: 1 },
-  subtitle: { fontSize: 16, color: C.textSecondary, marginBottom: 40 },
-  inputGroup: { marginBottom: 20 },
+  subtitle: { fontSize: 16, color: C.textSecondary, marginBottom: 20 },
+  inputGroup: { marginBottom: 12 },
   label: { fontSize: 12, fontWeight: '800', color: C.textSecondary, marginBottom: 8, letterSpacing: 2 },
   input: { 
     backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, 
@@ -106,11 +112,11 @@ const s = StyleSheet.create({
   },
   btn: { 
     backgroundColor: C.accent, borderRadius: 14, padding: 18, alignItems: 'center', 
-    marginTop: 20, shadowColor: C.accent, shadowOpacity: 0.3, shadowRadius: 10 
+    shadowColor: C.accent, shadowOpacity: 0.3, shadowRadius: 10 
   },
   btnDisabled: { opacity: 0.6 },
   btnText: { color: '#FFF', fontSize: 18, fontWeight: '800' },
-  link: { marginTop: 30, alignItems: 'center' },
+  link: { marginTop: 20, alignItems: 'center' },
   linkText: { color: C.textSecondary, fontSize: 14 },
   linkHighlight: { color: C.accent, fontWeight: '800' },
 });
