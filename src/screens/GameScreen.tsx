@@ -21,7 +21,7 @@ import {
   canPlace, checkWinner, createBoard, getPlayerPieces,
   isDraw, movePiece, placePiece, getWinningLine, DEFAULT_CONFIG
 } from '../game/gameEngine';
-import { getAIMove } from '../game/aiEngine';
+import { getAIMove, resetAIMemory } from '../game/aiEngine';
 import { AuthContext } from '../auth/AuthContext';
 import { recordMatchResult, getUserProfile, getAutoDifficulty } from '../services/userService';
 
@@ -276,6 +276,7 @@ export default function GameScreen({ navigation, route }: any) {
     setIsProcessingRound(false);
     setIsThinking(false);
     isAITurnRunning.current = false;
+    resetAIMemory();
     resultOpacity.value = 0;
     resultScale.value = 0.8;
   };
