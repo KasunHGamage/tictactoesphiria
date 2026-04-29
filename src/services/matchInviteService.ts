@@ -15,11 +15,16 @@ const INVITES = 'invites';
 /**
  * Send a match invitation. Creates a 'waiting' match doc first.
  */
-export async function sendMatchInvite(fromUid: string, fromName: string, toUid: string): Promise<string> {
-  // 1. Create the match first
-  const matchId = await createMatch(fromUid, fromName);
+export async function sendMatchInvite(
+  fromUid: string,
+  fromName: string,
+  toUid: string,
+  existingMatchId?: string,
+): Promise<string> {
+  // Reuse a pre-created match (from setup flow) or create a new one
+  const matchId = existingMatchId ?? await createMatch(fromUid, fromName);
 
-  // 2. Create the invitation pointing to that match
+  // Create the invitation pointing to that match
   const invite: Omit<MatchInvite, 'id'> = {
     from: fromUid,
     fromName,

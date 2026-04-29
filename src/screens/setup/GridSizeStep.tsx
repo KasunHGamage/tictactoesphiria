@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, Text, View, Pressable } from 'react-native';
+import { StyleSheet, Text, View, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInRight } from 'react-native-reanimated';
 import SetupStepWrapper from '../../components/setup/SetupStepWrapper';
@@ -7,7 +8,6 @@ import { Colors, Spacing } from '../../../constants/theme';
 import { useAuth } from '../../auth/AuthContext';
 import { createMatch } from '../../services/matchService';
 import { GameConfig } from '../../game/gameTypes';
-import { Alert, ActivityIndicator } from 'react-native';
 
 export default function GridSizeStep({ navigation, route }: any) {
   const { user } = useAuth();
@@ -34,7 +34,13 @@ export default function GridSizeStep({ navigation, route }: any) {
 
       if (mode === 'friend') {
         const matchId = await createMatch(user!.uid, user!.displayName || 'Player', config);
-        navigation.navigate('Friends', { matchId, config });
+        // Friends is a tab inside MainTabs — navigate with nested params
+        navigation.dispatch(
+          CommonActions.navigate('Main', {
+            screen: 'Friends',
+            params: { pendingMatchId: matchId },
+          })
+        );
       } else {
         navigation.navigate('SinglePlayer', { config });
       }

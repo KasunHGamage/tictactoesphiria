@@ -31,9 +31,9 @@ export function useMatchInvitations(onMatchStarted: (matchId: string, playerSide
     };
   }, [user, onMatchStarted]);
 
-  const inviteFriend = async (friendUid: string) => {
+  const inviteFriend = async (friendUid: string, matchId?: string) => {
     if (!user) return;
-    return sendMatchInvite(user.uid, user.displayName || 'Player', friendUid);
+    return sendMatchInvite(user.uid, user.displayName || 'Player', friendUid, matchId);
   };
 
   const accept = async (invite: MatchInvite) => {

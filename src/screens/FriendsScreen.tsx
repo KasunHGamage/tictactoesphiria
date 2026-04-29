@@ -14,8 +14,9 @@ import {
 import { useMatchInvitations } from '../hooks/useMatchInvitations';
 import { MatchInvite } from '../services/matchTypes';
 
-export default function FriendsScreen() {
+export default function FriendsScreen({ route }: any) {
   const { user } = useAuth();
+  const pendingMatchId: string | undefined = route?.params?.pendingMatchId;
   const [searchId, setSearchId] = useState('');
   const [searching, setSearching] = useState(false);
   const [friends, setFriends] = useState<UserProfile[]>([]);
@@ -74,9 +75,12 @@ export default function FriendsScreen() {
       </View>
       <Pressable
         style={({ pressed }) => [s.inviteBtn, pressed && { opacity: 0.75 }]}
-        onPress={() =>
-          inviteFriend(item.uid).then(() => Alert.alert('Sent', 'Match invitation sent!'))
-        }
+        onPress={() => {
+          const matchId = pendingMatchId || undefined;
+          inviteFriend(item.uid, matchId)
+            .then(() => Alert.alert('Sent', 'Match invitation sent!'))
+            .catch(() => Alert.alert('Error', 'Failed to send invite'));
+        }}
       >
         <Text style={s.inviteBtnText}>INVITE ⚔️</Text>
       </Pressable>
