@@ -38,7 +38,7 @@ export default function PlayScreen({ navigation }: any) {
         {/* ── Practice vs AI ── */}
         <Pressable
           style={({ pressed }) => [s.card, pressed && s.cardPressed]}
-          onPress={() => navigation.navigate('GameSetup', { mode: 'ai' })}
+          onPress={() => navigation.navigate('SetupDifficulty')}
         >
           <View style={[s.iconCircle, s.iconCircleAI]}>
             <Ionicons name="desktop-outline" size={28} color={Colors.neonBlue} />
@@ -53,7 +53,7 @@ export default function PlayScreen({ navigation }: any) {
         {/* ── Play with Friend — HERO CARD ── */}
         <Pressable
           style={({ pressed }) => [s.card, s.heroCard, pressed && s.cardPressed]}
-          onPress={() => navigation.navigate('GameSetup', { mode: 'friend' })}
+          onPress={() => navigation.navigate('SetupGridSize', { mode: 'friend' })}
         >
           {/* Glow overlay */}
           <View style={s.heroOverlay} pointerEvents="none" />

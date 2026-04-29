@@ -5,12 +5,14 @@ import {
   StyleSheet, Text, useWindowDimensions, View, Alert, ScrollView
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { CommonActions } from '@react-navigation/native';
 import Animated, {
   useSharedValue, useAnimatedStyle, withTiming, withSequence, 
   withDelay, withRepeat, Easing, useDerivedValue 
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import NeonConfetti from '../components/NeonConfetti';
+import NeonButton from '../components/NeonButton';
 import { Colors, Spacing, glow } from '../../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -252,11 +254,6 @@ export default function GameScreen({ navigation, route }: any) {
 
       resultOpacity.value = withTiming(1, { duration: 400 });
       resultScale.value = withTiming(1, { duration: 500, easing: Easing.out(Easing.back(1.5)) });
-
-      // Auto start next round
-      setTimeout(() => {
-        startNextRound();
-      }, 3000);
     }
   }, [state.status, state.winner]);
 
@@ -349,8 +346,18 @@ export default function GameScreen({ navigation, route }: any) {
     transform: [{ scale: resultScale.value }]
   }));
 
+  const animatedOverlayStyle = useAnimatedStyle(() => ({
+    opacity: resultOpacity.value,
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    zIndex: 100,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: 20,
+  }));
+
   return (
-    <ScreenWrapper scroll={true} horizontalPadding={0}>
+    <ScreenWrapper scroll={false} horizontalPadding={0}>
       <StatusBar barStyle="light-content" backgroundColor={Colors.bg} />
       
       {/* Header */}
@@ -421,22 +428,46 @@ export default function GameScreen({ navigation, route }: any) {
           </View>
         </View>
 
-        {/* Result Overlay */}
-        {state.status !== 'playing' && (
-          <View style={styles.footer}>
-            <View style={styles.resultWrapper}>
-              <Animated.View style={[styles.resultBanner, animatedResultStyle]}>
-                <Text style={[styles.resultTitle, { color: state.winner === 'X' ? Colors.neonYellow : state.winner === 'O' ? Colors.neonPink : Colors.textPrimary }]}
-                >
-                  {state.winner === 'X' ? 'VICTORY!' : state.winner === 'O' ? 'DEFEAT' : 'DRAW'}
-                </Text>
-                {xpGained && <View style={styles.xpBadge}><Text style={styles.xpTxt}>+{xpGained} XP</Text></View>}
-                <Text style={styles.nextRoundTxt}>Next round starting...</Text>
-              </Animated.View>
-            </View>
-          </View>
-        )}
       </View>
+
+      {/* Result Overlay */}
+      {state.status !== 'playing' && (
+        <Animated.View style={animatedOverlayStyle}>
+          <Animated.View style={[styles.resultBanner, animatedResultStyle]}>
+            <Text style={[styles.resultTitle, { color: state.winner === 'X' ? Colors.neonYellow : state.winner === 'O' ? Colors.neonPink : Colors.textPrimary }]}
+            >
+              {state.winner === 'X' ? 'VICTORY!' : state.winner === 'O' ? 'DEFEAT' : 'DRAW'}
+            </Text>
+            {xpGained && <View style={styles.xpBadge}><Text style={styles.xpTxt}>+{xpGained} XP</Text></View>}
+            
+            <View style={{ marginTop: 20, width: '100%', gap: 12 }}>
+              <NeonButton 
+                title="NEXT ROUND" 
+                onPress={startNextRound}
+                color={Colors.neonPurple}
+              />
+              <NeonButton 
+                title="EXIT TO LOBBY" 
+                onPress={() => {
+                  navigation.dispatch(
+                    CommonActions.reset({
+                      index: 0,
+                      routes: [
+                        {
+                          name: 'Main',
+                          params: { screen: 'Home' },
+                        },
+                      ],
+                    })
+                  );
+                }}
+                color={Colors.textSecondary}
+                variant="outline"
+              />
+            </View>
+          </Animated.View>
+        </Animated.View>
+      )}
 
       <View pointerEvents="none" style={styles.confettiOverlay}>
         <NeonConfetti show={showConfetti} onComplete={() => setShowConfetti(false)} />
@@ -515,9 +546,8 @@ const styles = StyleSheet.create({
     borderWidth: 0.5, borderColor: Colors.border,
   },
 
-  footer: { marginTop: 20, marginBottom: 40 },
-  resultWrapper: { width: '100%' },
   resultBanner: {
+    width: '100%',
     backgroundColor: '#130820', borderRadius: 24, padding: 28,
     alignItems: 'center', borderWidth: 2, borderColor: Colors.neonPurple,
     ...glow(Colors.neonPurple, 20),

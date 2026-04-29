@@ -4,7 +4,7 @@
 
 import { Board, Player, Difficulty } from '../game/gameTypes';
 
-export type MatchStatus = 'waiting' | 'playing' | 'finished' | 'abandoned';
+export type MatchStatus = 'waiting' | 'playing' | 'timeout_pending' | 'finished' | 'abandoned';
 export type InviteStatus = 'pending' | 'accepted' | 'rejected';
 
 export interface PlayerInfo {
@@ -24,8 +24,10 @@ export interface MatchDocument {
   status: MatchStatus;
   turnStartedAt: any;
   turnDuration: number;
+  timedOutPlayer: Player | null;
   winner: Player | null;
   winningLine: number[] | null;
+  endReason?: 'timeout' | 'resign' | 'draw' | 'win';
   playerX: PlayerInfo;
   playerO: PlayerInfo | null;
   moveCount: number;

@@ -19,7 +19,8 @@ import LeaderboardScreen from '../screens/LeaderboardScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import MultiplayerGameScreen from '../screens/MultiplayerGameScreen';
 import GameScreen from '../screens/GameScreen';
-import GameSetupScreen from '../screens/GameSetupScreen';
+import DifficultyStep from '../screens/setup/DifficultyStep';
+import GridSizeStep from '../screens/setup/GridSizeStep';
 
 import { Ionicons } from '@expo/vector-icons';
 
@@ -130,7 +131,8 @@ export default function RootNavigator() {
             <Stack.Screen name="Main" component={MainTabs} />
             <Stack.Screen name="MultiplayerGame" component={MultiplayerGameScreen} />
             <Stack.Screen name="SinglePlayer" component={GameScreen} />
-            <Stack.Screen name="GameSetup" component={GameSetupScreen} />
+            <Stack.Screen name="SetupDifficulty" component={DifficultyStep} />
+            <Stack.Screen name="SetupGridSize" component={GridSizeStep} />
           </>
         ) : (
           <>

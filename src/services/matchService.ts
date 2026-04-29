@@ -110,6 +110,7 @@ export async function applyMove(matchId: string, payload: MovePayload, playerSid
       updates.winner = winner;
       updates.winningLine = winningLine;
       updates.status = 'finished';
+      updates.endReason = 'win';
       
       const winnerUid = winner === 'X' ? data.playerX.uid : data.playerO!.uid;
       const loserUid = winner === 'X' ? data.playerO!.uid : data.playerX.uid;
@@ -143,7 +144,70 @@ export async function startNextRound(matchId: string): Promise<void> {
       winningLine: null,
       moveCount: 0,
       turnStartedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+      timedOutPlayer: null,
+      updatedAt: serverTimestamp()
+    });
+  });
+}
+
+export async function triggerTimeout(matchId: string, timedOutPlayer: Player): Promise<void> {
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(matchRef(matchId));
+    if (!snap.exists()) return;
+    const data = snap.data() as MatchDocument;
+    if (data.status !== 'playing') return;
+
+    tx.update(matchRef(matchId), {
+      status: 'timeout_pending',
+      timedOutPlayer,
+      updatedAt: serverTimestamp()
+    });
+    console.log("[SERVICE] Match status set to timeout_pending");
+  });
+}
+
+export async function continueMatch(matchId: string): Promise<void> {
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(matchRef(matchId));
+    if (!snap.exists()) return;
+    const data = snap.data() as MatchDocument;
+    if (data.status !== 'timeout_pending') return;
+
+    tx.update(matchRef(matchId), {
+      status: 'playing',
+      timedOutPlayer: null,
+      board: createBoard(data.gridSize),
+      roundNumber: data.roundNumber + 1,
+      currentPlayer: 'X',
+      phase: 'placement',
+      moveCount: 0,
+      turnStartedAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+  });
+}
+
+export async function forfeitMatch(matchId: string, loserSide: Player): Promise<void> {
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(matchRef(matchId));
+    if (!snap.exists()) return;
+    const data = snap.data() as MatchDocument;
+    if (data.status !== 'timeout_pending') return;
+
+    console.log("[SERVICE] Forfeiting match for loser:", loserSide);
+    const winnerSide = loserSide === 'X' ? 'O' : 'X';
+    const winnerUid = winnerSide === 'X' ? data.playerX.uid : data.playerO!.uid;
+    const loserUid = loserSide === 'X' ? data.playerO!.uid : data.playerX.uid;
+
+    tx.update(matchRef(matchId), {
+      status: 'finished',
+      winner: winnerSide,
+      endReason: 'timeout',
+      timedOutPlayer: null,
+      [`scores.${winnerUid}`]: (data.scores[winnerUid] || 0) + 1,
+      [`winStreaks.${winnerUid}`]: (data.winStreaks[winnerUid] || 0) + 1,
+      [`winStreaks.${loserUid}`]: 0,
+      updatedAt: serverTimestamp()
     });
   });
 }
@@ -161,30 +225,8 @@ export async function resignMatch(matchId: string, resigningUid: string): Promis
     tx.update(matchRef(matchId), { 
       status: 'abandoned', 
       winner,
+      endReason: 'resign',
       updatedAt: serverTimestamp() 
-    });
-  });
-}
-
-export async function claimTimeoutWin(matchId: string, claimerSide: Player): Promise<void> {
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(matchRef(matchId));
-    if (!snap.exists()) return;
-    const data = snap.data() as MatchDocument;
-
-    if (data.status !== 'playing' || data.currentPlayer === claimerSide) return;
-    if (!data.turnStartedAt || !data.turnDuration) return;
-
-    const winnerUid = claimerSide === 'X' ? data.playerX.uid : data.playerO!.uid;
-    const loserUid = claimerSide === 'X' ? data.playerO!.uid : data.playerX.uid;
-
-    tx.update(matchRef(matchId), {
-      status: 'finished',
-      winner: claimerSide,
-      [`scores.${winnerUid}`]: (data.scores[winnerUid] || 0) + 1,
-      [`winStreaks.${winnerUid}`]: (data.winStreaks[winnerUid] || 0) + 1,
-      [`winStreaks.${loserUid}`]: 0,
-      updatedAt: serverTimestamp()
     });
   });
 }

@@ -3,7 +3,9 @@ import ScreenWrapper from '../components/ScreenWrapper';
 import {
   Animated as RNAnimated, Platform, Pressable, StatusBar,
   StyleSheet, Text, useWindowDimensions, View, Alert, ScrollView,
+  ActivityIndicator,
 } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Animated, { 
@@ -12,13 +14,14 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import NeonConfetti from '../components/NeonConfetti';
+import NeonButton from '../components/NeonButton';
 import { Colors, Spacing, glow } from '../../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { Board, Player } from '../game/gameTypes';
 import { checkWinner, canPlace, getWinningLine, getPlayerPieces } from '../game/gameEngine';
 import { useMatch } from '../hooks/useMatch';
 import { recordMatchResult } from '../services/userService';
-import { startNextRound, claimTimeoutWin } from '../services/matchService';
+import { startNextRound, triggerTimeout, continueMatch, forfeitMatch } from '../services/matchService';
 
 // Use global theme tokens from constants/theme
 
@@ -178,6 +181,25 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
   const resultOpacity = useSharedValue(0);
   const turnPulse = useSharedValue(1);
 
+  const isAITurnRunning = useRef(false);
+  const nextRoundTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isEndingMatch = useRef(false);
+  const [gameEnded, setGameEnded] = useState(false);
+
+  const handleEndMatch = async () => {
+    if (isEndingMatch.current || match?.status === 'finished') return;
+    isEndingMatch.current = true;
+    console.log("[DEBUG] END MATCH CLICKED");
+    try {
+      await forfeitMatch(matchId, playerSide);
+      setGameEnded(true);
+      console.log("[DEBUG] STATUS SET TO FINISHED");
+    } catch (err) {
+      console.error("[DEBUG] Failed to end match:", err);
+      isEndingMatch.current = false;
+    }
+  };
+
   const handleTileLayout = useCallback((index: number, layout: any) => {
     setTileLayouts(prev => ({ ...prev, [index]: layout }));
   }, []);
@@ -204,10 +226,13 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
     );
   }, []);
 
-  // Handle Round Reset
+  // Handle Round Reset or Timeout Continue
   useEffect(() => {
-    if (match?.status === 'playing' && resultRecorded) {
+    if (match?.status === 'playing' && (resultRecorded || resultOpacity.value > 0)) {
       resetLocalState();
+    }
+    if (match?.status === 'finished') {
+      setGameEnded(true);
     }
   }, [match?.status, resultRecorded, resetLocalState]);
 
@@ -232,13 +257,27 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
       const now = Date.now();
       const diff = Math.floor((now - startedMs) / 1000);
       const remaining = Math.max(0, match.turnDuration - diff);
-      setTimeLeft(remaining);
+      
+      if (remaining !== timeLeft) {
+        setTimeLeft(remaining);
+        if (remaining <= 5 && remaining > 0 && match.currentPlayer === playerSide) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }
+      }
 
       if (remaining === 0) {
         clearInterval(interval);
-        // If it's NOT our turn, we claim the win.
-        if (match.currentPlayer !== playerSide) {
-          claimTimeoutWin(matchId, playerSide);
+        console.log("[TIMEOUT] Timer reached 0. Current status:", match.status);
+        
+        if (match.status === 'playing') {
+          console.log("[TIMEOUT] Triggering status update to timeout_pending for player:", match.currentPlayer);
+          if (match.currentPlayer === playerSide) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          }
+          
+          triggerTimeout(matchId, match.currentPlayer).catch(err => {
+            console.error('[TIMEOUT] Failed to trigger timeout:', err);
+          });
         }
       }
     }, 1000);
@@ -266,7 +305,7 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
 
   // Cinematic Win Sequence + Auto Next Round
   useEffect(() => {
-    if (match?.status === 'finished' || match?.status === 'abandoned') {
+    if (match?.status === 'finished' || match?.status === 'abandoned' || match?.status === 'timeout_pending') {
       if (winner) {
         boardScale.value = withDelay(100, withTiming(1.05, { duration: 400 }));
         setTimeout(() => {
@@ -274,7 +313,14 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
           resultOpacity.value = withTiming(1, { duration: 400 });
           resultScale.value = withTiming(1, { duration: 500, easing: Easing.out(Easing.back(1.5)) });
         }, 600);
+      } else {
+        setTimeout(() => {
+          resultOpacity.value = withTiming(1, { duration: 400 });
+          resultScale.value = withTiming(1, { duration: 500, easing: Easing.out(Easing.back(1.5)) });
+        }, 600);
       }
+
+      if (match?.status === 'timeout_pending') return; // Don't record result yet
 
       if (!resultRecorded) {
         setResultRecorded(true);
@@ -285,13 +331,10 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
         if (isWinner) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         else if (isLoser) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 
-        // AUTO START NEXT ROUND
-        setTimeout(() => {
-          startNextRound(matchId);
-        }, 3000);
+        console.log("[DEBUG] Match status updated to", match.status, "reason:", match.endReason);
       }
     }
-  }, [match?.status, winner, isWinner, isLoser, myUid, resultRecorded, myStreak, matchId]);
+  }, [match?.status, winner, isWinner, isLoser, myUid, resultRecorded, myStreak, matchId, match?.endReason]);
 
   const handleCell = useCallback(async (index: number) => {
     if (!match || !myTurn || match.status !== 'playing') return;
@@ -323,6 +366,7 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
   const status = match?.status;
   const statusLabel = !match ? 'Connecting…'
     : status === 'waiting' ? 'Waiting for opponent…'
+    : status === 'timeout_pending' ? (match?.timedOutPlayer === playerSide ? "Time's Up!" : `Waiting for ${opponentName}…`)
     : status === 'finished' ? (isWinner ? 'Victory!' : isLoser ? 'Defeat' : 'Draw')
     : status === 'abandoned' ? (isWinner ? 'Opponent left — You win!' : 'You left the match')
     : myTurn
@@ -340,6 +384,16 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
     transform: [{ scale: resultScale.value }]
   }));
 
+  const animatedOverlayStyle = useAnimatedStyle(() => ({
+    opacity: resultOpacity.value,
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    zIndex: 100,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: 20,
+  }));
+
   const animatedMyCardStyle = useAnimatedStyle(() => ({
     transform: [{ scale: myTurn && status === 'playing' ? turnPulse.value : 1 }]
   }));
@@ -349,7 +403,7 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
   }));
 
   return (
-    <ScreenWrapper scroll={true} horizontalPadding={0}>
+    <ScreenWrapper scroll={false} horizontalPadding={0}>
       <StatusBar barStyle="light-content" backgroundColor={Colors.bg} />
 
       {/* Session Header */}
@@ -450,32 +504,113 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
           <Text style={ms.phaseMain}>{phase === 'placement' ? 'PLACEMENT' : 'MOVEMENT'}</Text>
         </View>
 
-        {/* Result Overlay */}
-        {(status === 'finished' || status === 'abandoned') && (
-          <View style={ms.footer}>
-            <View style={ms.resultWrapper}>
-              <Animated.View style={[ms.resultBanner, animatedResultStyle]}>
-                <Text style={[
-                  ms.resultTitle, 
-                  { color: isWinner ? Colors.neonYellow : isLoser ? Colors.neonPink : Colors.textPrimary }
-                ]}>
-                  {status === 'abandoned' && isWinner ? 'OPPONENT LEFT' : isWinner ? 'VICTORY!' : isLoser ? 'DEFEAT' : 'DRAW'}
-                </Text>
-                {xpGained && (
-                  <View style={ms.xpBadge}>
-                    <Text style={ms.xpTxt}>+{xpGained} XP</Text>
-                  </View>
-                )}
-                <Text style={ms.nextRoundTxt}>Preparing next round...</Text>
-              </Animated.View>
-            </View>
-          </View>
-        )}
       </View>
+
+      {/* Result Overlay */}
+      {(status === 'finished' || status === 'abandoned') && (
+        <Animated.View style={animatedOverlayStyle}>
+          <Animated.View style={[ms.resultBanner, animatedResultStyle]}>
+            <Text style={[
+              ms.resultTitle, 
+              { color: isWinner ? Colors.neonYellow : isLoser ? Colors.neonPink : Colors.textPrimary }
+            ]}>
+              {match?.endReason === 'timeout' ? "TIME'S UP!" 
+                : status === 'abandoned' && isWinner ? 'OPPONENT LEFT' 
+                : isWinner ? 'VICTORY!' 
+                : isLoser ? 'DEFEAT' 
+                : 'DRAW'}
+            </Text>
+            {match?.endReason === 'timeout' && (
+              <Text style={[ms.nextRoundTxt, { color: isWinner ? Colors.neonYellow : Colors.neonPink, marginBottom: 10 }]}>
+                {isWinner ? 'Opponent timed out!' : 'You ran out of time!'}
+              </Text>
+            )}
+            {xpGained && (
+              <View style={ms.xpBadge}>
+                <Text style={ms.xpTxt}>+{xpGained} XP</Text>
+              </View>
+            )}
+
+            <View style={{ marginTop: 20, width: '100%', gap: 12 }}>
+              {match?.endReason !== 'timeout_quit' && match?.endReason !== 'resign' ? (
+                <NeonButton 
+                  title="NEXT ROUND" 
+                  onPress={() => {
+                    console.log("[DEBUG] TRYING TO START NEXT ROUND");
+                    if (match?.status !== 'finished' && !gameEnded) {
+                      startNextRound(matchId);
+                    }
+                  }}
+                  color={Colors.neonPurple}
+                />
+              ) : null}
+              
+              <NeonButton 
+                title="EXIT TO LOBBY" 
+                onPress={() => {
+                  console.log("[DEBUG] EXIT TO LOBBY CLICKED");
+                  navigation.dispatch(
+                    CommonActions.reset({
+                      index: 0,
+                      routes: [
+                        {
+                          name: 'Main',
+                          params: { screen: 'Home' },
+                        },
+                      ],
+                    })
+                  );
+                }}
+                color={Colors.textSecondary}
+                variant="outline"
+              />
+            </View>
+          </Animated.View>
+        </Animated.View>
+      )}
 
       <View pointerEvents="none" style={ms.confettiOverlay}>
         <NeonConfetti show={showConfetti} onComplete={() => setShowConfetti(false)} />
       </View>
+
+      {/* Timeout Decision Modal */}
+      {status === 'timeout_pending' && (
+        <Animated.View style={animatedOverlayStyle}>
+          <Animated.View style={[ms.resultBanner, animatedResultStyle]}>
+            <Text style={[ms.resultTitle, { color: Colors.neonPink }]}>TIME'S UP</Text>
+            
+            {match?.timedOutPlayer === playerSide ? (
+              <>
+                <Text style={[ms.nextRoundTxt, { marginBottom: 20, textAlign: 'center' }]}>
+                  You didn't make a move in time. Continue or end the match?
+                </Text>
+                <View style={{ gap: 15, width: '100%' }}>
+                  <NeonButton 
+                    title="CONTINUE" 
+                    onPress={() => continueMatch(matchId)}
+                    color={Colors.neonYellow}
+                  />
+                  <NeonButton 
+                    title="END MATCH" 
+                    onPress={handleEndMatch}
+                    color={Colors.neonPink}
+                    variant="outline"
+                  />
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={[ms.nextRoundTxt, { textAlign: 'center' }]}>
+                  Waiting for {opponentName} to decide...
+                </Text>
+                <View style={{ marginTop: 25 }}>
+                  <ActivityIndicator color={Colors.neonPurple} size="large" />
+                </View>
+              </>
+            )}
+          </Animated.View>
+        </Animated.View>
+      )}
     </ScreenWrapper>
   );
 }
@@ -555,9 +690,8 @@ const ms = StyleSheet.create({
     textShadowColor: Colors.neonPurple, textShadowRadius: 8,
   },
 
-  footer: { marginTop: 20, marginBottom: 40 },
-  resultWrapper: { width: '100%' },
   resultBanner: {
+    width: '100%',
     backgroundColor: '#130820', borderRadius: 24, padding: 28,
     alignItems: 'center', borderWidth: 2, borderColor: Colors.neonPurple,
     ...glow(Colors.neonPurple, 22),
