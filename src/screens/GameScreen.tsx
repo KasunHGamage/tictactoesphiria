@@ -5,12 +5,13 @@ import {
   StyleSheet, Text, useWindowDimensions, View, Alert, ScrollView
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { 
+import Animated, {
   useSharedValue, useAnimatedStyle, withTiming, withSequence, 
   withDelay, withRepeat, Easing, useDerivedValue 
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import ConfettiCannon from 'react-native-confetti-cannon';
+import NeonConfetti from '../components/NeonConfetti';
+import { Colors, Spacing, glow } from '../../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
 import { GamePhase, GameState, Player, Board, GameConfig, Difficulty } from '../game/gameTypes';
@@ -24,14 +25,7 @@ import { recordMatchResult, getUserProfile, getAutoDifficulty } from '../service
 
 // ── Colors ────────────────────────────────────────────────────────
 
-const C = {
-  bg: '#0D0D1A', surface: '#14142B', card: '#1C1C3A', border: '#2A2A5A',
-  accent: '#7C5CFC', accentGlow: '#9B7DFF', accentDim: '#3D2E7C',
-  xColor: '#FF6B8A', xGlow: '#FF4D73', oColor: '#4FC3F7', oGlow: '#29B6F6',
-  textPrimary: '#F0F0FF', textSecondary: '#8888AA',
-  selected: '#FFD700', selectedBg: '#3A3000', winCell: '#FFD700',
-  gold: '#FFD700',
-};
+// Theme tokens used from constants/theme.ts
 
 // ── Components ────────────────────────────────────────────────────
 
@@ -70,7 +64,7 @@ function StrikeLine({ winLine, layouts }: { winLine: number[] | null, layouts: R
       left: startX,
       width: length,
       height: 6,
-      backgroundColor: C.gold,
+      backgroundColor: Colors.neonYellow,
       borderRadius: 4,
       zIndex: 20,
       opacity: 1,
@@ -82,10 +76,10 @@ function StrikeLine({ winLine, layouts }: { winLine: number[] | null, layouts: R
     };
   });
 
-  return <Animated.View style={animatedStyle} />;
+  return <Animated.View pointerEvents="none" style={animatedStyle} />;
 }
 
-function Cell({ index, value, isSelected, isWinCell, boardSize, fontSize, disabled, onPress, onLayout }: any) {
+function Cell({ index, value, isSelected, isWinCell, boardSize, size, fontSize, disabled, onPress, onLayout }: any) {
   const scale = useSharedValue(1);
   const pulse = useSharedValue(1);
 
@@ -104,8 +98,8 @@ function Cell({ index, value, isSelected, isWinCell, boardSize, fontSize, disabl
 
   const animatedCellInner = useAnimatedStyle(() => ({
     transform: [{ scale: isWinCell ? pulse.value : scale.value }],
-    borderColor: isWinCell ? C.gold : isSelected ? C.gold : C.border,
-    backgroundColor: isSelected ? C.selectedBg : isWinCell ? '#2A2600' : C.card,
+    borderColor: isWinCell ? Colors.neonYellow : isSelected ? Colors.neonYellow : Colors.border,
+    backgroundColor: isSelected ? 'rgba(255,214,10,0.08)' : isWinCell ? 'rgba(255,214,10,0.15)' : Colors.card,
   }));
 
   const handle = () => {
@@ -114,11 +108,15 @@ function Cell({ index, value, isSelected, isWinCell, boardSize, fontSize, disabl
     onPress(index);
   };
 
-  const color = value === 'X' ? C.xColor : C.oColor;
+  const color = value === 'X' ? Colors.neonPink : Colors.neonBlue;
   return (
-    <Pressable onLayout={handleLayout} onPress={handle} style={{ flexBasis: `${100/boardSize}%`, aspectRatio: 1 }}>
+    <Pressable onLayout={handleLayout} onPress={handle} style={{ width: size, height: size }}>
       <Animated.View style={[styles.cellInner, animatedCellInner]}>
-        {value && <Text style={{ fontSize, fontWeight: '900', color }}>{value === 'X' ? '✕' : '○'}</Text>}
+        {value && (
+          <Text style={{ fontSize, fontWeight: '900', color, textShadowColor: color, textShadowRadius: 10 }}>
+            {value === 'X' ? '✕' : '○'}
+          </Text>
+        )}
       </Animated.View>
     </Pressable>
   );
@@ -130,9 +128,14 @@ export default function GameScreen({ navigation, route }: any) {
   const { user } = useContext(AuthContext);
   const { width: W } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const BOARD_WIDTH = W * 0.9;
-
+  
+  const gridSize = route.params?.config?.gridSize || 3;
   const config: GameConfig = route.params?.config || DEFAULT_CONFIG;
+  const BOARD_WIDTH = W - 32;
+  const BOARD_BORDER = 2; // borderWidth on the board View
+  const cellSize = Math.floor((BOARD_WIDTH - BOARD_BORDER * 2) / gridSize);
+
+  console.log(`[DEBUG] GameScreen: gridSize=${gridSize}, cellSize=${cellSize}, BOARD_WIDTH=${BOARD_WIDTH}`);
 
   const [roundNumber, setRoundNumber] = useState(1);
   const [winStreak, setWinStreak] = useState(0);
@@ -339,7 +342,6 @@ export default function GameScreen({ navigation, route }: any) {
     }
   };
 
-  const cellSize = BOARD_WIDTH / config.gridSize;
   const boardFontSize = Math.floor(cellSize * 0.44);
 
   const animatedResultStyle = useAnimatedStyle(() => ({
@@ -349,12 +351,12 @@ export default function GameScreen({ navigation, route }: any) {
 
   return (
     <ScreenWrapper scroll={true} horizontalPadding={0}>
-      <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+      <StatusBar barStyle="light-content" backgroundColor={Colors.bg} />
       
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="close" size={24} color={C.xColor} />
+          <Ionicons name="close" size={24} color={Colors.neonPink} />
         </Pressable>
         <View style={styles.roundBadge}><Text style={styles.roundTxt}>ROUND {roundNumber}</Text></View>
         <View style={styles.levelBadge}><Text style={styles.levelTxt}>LV {level}</Text></View>
@@ -364,13 +366,13 @@ export default function GameScreen({ navigation, route }: any) {
         {/* Player HUD */}
         <View style={styles.players}>
           <View style={[styles.playerCard, state.currentPlayer === 'X' && state.status === 'playing' && styles.activeCard]}>
-            <Text style={[styles.symbol, { color: C.xColor }]}>X</Text>
+            <Text style={[styles.symbol, { color: Colors.neonPink }]}>X</Text>
             <Text style={styles.name}>You</Text>
             {winStreak > 0 && <Text style={styles.streak}>🔥 {winStreak}</Text>}
           </View>
           <View style={styles.vsContainer}><Text style={styles.vsTxt}>VS</Text></View>
           <View style={[styles.playerCard, state.currentPlayer === 'O' && state.status === 'playing' && styles.activeCard]}>
-            <Text style={[styles.symbol, { color: C.oColor }]}>O</Text>
+            <Text style={[styles.symbol, { color: Colors.neonBlue }]}>O</Text>
             <Text style={styles.name}>{activeDifficulty.toUpperCase()} AI</Text>
             <Text style={styles.botLevel}>Mode: {config.difficulty}</Text>
           </View>
@@ -402,12 +404,14 @@ export default function GameScreen({ navigation, route }: any) {
         {/* Board */}
         <View 
           key={`board-${config.gridSize}`}
-          style={[styles.boardContainer, { width: BOARD_WIDTH, height: BOARD_WIDTH, alignSelf: 'center' }]}
+          pointerEvents="auto"
+          style={[styles.boardContainer, { alignSelf: 'center' }]}
         >
-          <View style={styles.board}>
+          <View style={[styles.board, { width: BOARD_WIDTH, height: BOARD_WIDTH }]}>
             {state.board.map((cell, idx) => (
               <Cell 
                 key={idx} index={idx} value={cell} boardSize={config.gridSize}
+                size={cellSize}
                 isSelected={state.selectedIndex === idx} isWinCell={state.winningLine?.includes(idx)}
                 fontSize={boardFontSize} disabled={state.currentPlayer !== 'X' || state.status !== 'playing' || isThinking}
                 onPress={handleCellPress} onLayout={(i: number, l: any) => setTileLayouts(p => ({ ...p, [i]: l }))}
@@ -422,7 +426,8 @@ export default function GameScreen({ navigation, route }: any) {
           <View style={styles.footer}>
             <View style={styles.resultWrapper}>
               <Animated.View style={[styles.resultBanner, animatedResultStyle]}>
-                <Text style={[styles.resultTitle, { color: state.winner === 'X' ? C.gold : state.winner === 'O' ? C.xColor : C.textPrimary }]}>
+                <Text style={[styles.resultTitle, { color: state.winner === 'X' ? Colors.neonYellow : state.winner === 'O' ? Colors.neonPink : Colors.textPrimary }]}
+                >
                   {state.winner === 'X' ? 'VICTORY!' : state.winner === 'O' ? 'DEFEAT' : 'DRAW'}
                 </Text>
                 {xpGained && <View style={styles.xpBadge}><Text style={styles.xpTxt}>+{xpGained} XP</Text></View>}
@@ -434,53 +439,96 @@ export default function GameScreen({ navigation, route }: any) {
       </View>
 
       <View pointerEvents="none" style={styles.confettiOverlay}>
-        {showConfetti && <ConfettiCannon count={200} origin={{ x: W / 2, y: -20 }} fallSpeed={3000} />}
+        <NeonConfetti show={showConfetti} onComplete={() => setShowConfetti(false)} />
       </View>
     </ScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  header: { 
-    flexDirection: 'row', alignItems: 'center', width: '100%', 
-    paddingHorizontal: 16, marginTop: 10, marginBottom: 20, gap: 10 
+  header: {
+    flexDirection: 'row', alignItems: 'center', width: '100%',
+    paddingHorizontal: 16, marginTop: 10, marginBottom: 20, gap: 10,
   },
-  backBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.card, justifyContent: 'center', alignItems: 'center' },
-  roundBadge: { backgroundColor: C.accent, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  roundTxt: { color: '#FFF', fontWeight: '900', fontSize: 12 },
-  levelBadge: { backgroundColor: C.card, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: C.border },
-  levelTxt: { color: C.gold, fontWeight: '900', fontSize: 12 },
-  
-  content: { marginTop: 20, gap: 20, paddingHorizontal: 16 },
-  players: { 
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', 
-    gap: 15, width: '100%'
+  backBtn: {
+    width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.card,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.neonPink + '66',
   },
-  playerCard: { flex: 1, backgroundColor: C.card, borderRadius: 20, padding: 15, alignItems: 'center', borderWidth: 1, borderColor: C.border },
-  activeCard: { borderColor: C.accent, shadowColor: C.accent, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
-  symbol: { fontSize: 24, fontWeight: '900', marginBottom: 2 },
-  name: { fontSize: 13, color: C.textPrimary, fontWeight: '700' },
-  botLevel: { fontSize: 10, color: C.textSecondary, marginTop: 2 },
-  streak: { fontSize: 11, color: C.gold, fontWeight: '800', marginTop: 2 },
-  vsContainer: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.surface, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: C.border },
-  vsTxt: { color: C.accentGlow, fontWeight: '900', fontSize: 11 },
+  roundBadge: {
+    backgroundColor: Colors.neonPurple + '22', paddingHorizontal: 14, paddingVertical: 7,
+    borderRadius: 10, borderWidth: 1, borderColor: Colors.neonPurple,
+    ...glow(Colors.neonPurple, 6),
+  },
+  roundTxt: { color: Colors.neonPurple, fontWeight: '900', fontSize: 12, letterSpacing: 1 },
+  levelBadge: {
+    backgroundColor: Colors.card, paddingHorizontal: 14, paddingVertical: 7,
+    borderRadius: 10, borderWidth: 1, borderColor: Colors.neonYellow + '66',
+  },
+  levelTxt: { color: Colors.neonYellow, fontWeight: '900', fontSize: 12, letterSpacing: 1 },
 
-  instructionCard: { width: '100%', backgroundColor: C.card, borderRadius: 20, padding: 15, borderWidth: 1, borderColor: C.border },
+  content: { marginTop: 20, gap: 20, paddingHorizontal: 16 },
+  players: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 15, width: '100%',
+  },
+  playerCard: {
+    flex: 1, backgroundColor: Colors.card, borderRadius: 20, padding: 15,
+    alignItems: 'center', borderWidth: 1, borderColor: Colors.border,
+  },
+  activeCard: {
+    borderColor: Colors.neonYellow, borderWidth: 2,
+    shadowColor: Colors.neonYellow, shadowOpacity: 0.7, shadowRadius: 18, elevation: 10,
+  },
+  symbol: { fontSize: 24, fontWeight: '900', marginBottom: 2 },
+  name: { fontSize: 13, color: Colors.textPrimary, fontWeight: '800' },
+  botLevel: { fontSize: 10, color: Colors.textSecondary, marginTop: 2, letterSpacing: 0.5 },
+  streak: { fontSize: 11, color: Colors.neonYellow, fontWeight: '900', marginTop: 2 },
+  vsContainer: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: '#160B28',
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.neonPurple + '66',
+  },
+  vsTxt: { color: Colors.neonPurple, fontWeight: '900', fontSize: 11 },
+
+  instructionCard: {
+    width: '100%', backgroundColor: Colors.card, borderRadius: 20, padding: 15,
+    borderWidth: 1, borderColor: Colors.border,
+    ...glow(Colors.neonPurple, 4),
+  },
   instrRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 8 },
   instrEmoji: { fontSize: 16 },
-  instrLabel: { color: C.textPrimary, fontSize: 13, fontWeight: '700' },
-  instrHintBox: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.border },
-  instrHintTxt: { color: C.accentGlow, fontSize: 13, fontWeight: '800' },
+  instrLabel: { color: Colors.textPrimary, fontSize: 13, fontWeight: '700' },
+  instrHintBox: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: Colors.border },
+  instrHintTxt: { color: Colors.neonPurple, fontSize: 13, fontWeight: '900' },
 
-  boardContainer: { shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 20, elevation: 15 },
-  board: { flex: 0, flexDirection: 'row', flexWrap: 'wrap', backgroundColor: C.surface, borderRadius: 20, overflow: 'hidden', borderWidth: 2, borderColor: C.border },
-  
+  boardContainer: {
+    shadowColor: Colors.neonPurple, shadowOpacity: 0.3, shadowRadius: 24, elevation: 15,
+  },
+  board: {
+    flex: 0, flexDirection: 'row', flexWrap: 'wrap', backgroundColor: Colors.card,
+    borderRadius: 20, overflow: 'hidden',
+    borderWidth: 2, borderColor: Colors.neonPurple + '55',
+  },
+  cellInner: {
+    width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center',
+    borderWidth: 0.5, borderColor: Colors.border,
+  },
+
   footer: { marginTop: 20, marginBottom: 40 },
   resultWrapper: { width: '100%' },
-  resultBanner: { backgroundColor: C.card, borderRadius: 24, padding: 25, alignItems: 'center', borderWidth: 2, borderColor: C.accentDim },
-  resultTitle: { fontSize: 28, fontWeight: '900', marginBottom: 10 },
-  xpBadge: { backgroundColor: '#FFD70022', borderColor: C.gold, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, marginBottom: 12 },
-  xpTxt: { color: C.gold, fontWeight: '900', fontSize: 16 },
-  nextRoundTxt: { color: C.textSecondary, fontSize: 12, fontWeight: '600' },
+  resultBanner: {
+    backgroundColor: '#130820', borderRadius: 24, padding: 28,
+    alignItems: 'center', borderWidth: 2, borderColor: Colors.neonPurple,
+    ...glow(Colors.neonPurple, 20),
+  },
+  resultTitle: { fontSize: 32, fontWeight: '900', marginBottom: 10, letterSpacing: 2 },
+  xpBadge: {
+    backgroundColor: 'rgba(255,214,10,0.12)', borderColor: Colors.neonYellow,
+    borderWidth: 1, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, marginBottom: 12,
+    ...glow(Colors.neonYellow, 6),
+  },
+  xpTxt: { color: Colors.neonYellow, fontWeight: '900', fontSize: 16 },
+  nextRoundTxt: { color: Colors.textSecondary, fontSize: 12, fontWeight: '600' },
   confettiOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 999 },
 });

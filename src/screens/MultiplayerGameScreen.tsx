@@ -11,22 +11,16 @@ import Animated, {
   withDelay, withRepeat, Easing, interpolate, runOnJS, useDerivedValue 
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import ConfettiCannon from 'react-native-confetti-cannon';
+import NeonConfetti from '../components/NeonConfetti';
+import { Colors, Spacing, glow } from '../../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { Board, Player } from '../game/gameTypes';
 import { checkWinner, canPlace, getWinningLine, getPlayerPieces } from '../game/gameEngine';
 import { useMatch } from '../hooks/useMatch';
 import { recordMatchResult } from '../services/userService';
-import { startNextRound } from '../services/matchService';
+import { startNextRound, claimTimeoutWin } from '../services/matchService';
 
-const C = {
-  bg: '#0D0D1A', surface: '#14142B', card: '#1C1C3A', border: '#2A2A5A',
-  accent: '#7C5CFC', accentGlow: '#9B7DFF', accentDim: '#3D2E7C',
-  xColor: '#FF6B8A', xGlow: '#FF4D73', oColor: '#4FC3F7', oGlow: '#29B6F6',
-  textPrimary: '#F0F0FF', textSecondary: '#8888AA',
-  selected: '#FFD700', selectedBg: '#3A3000', winCell: '#FFD700',
-  gold: '#FFD700',
-};
+// Use global theme tokens from constants/theme
 
 
 
@@ -37,7 +31,7 @@ interface CellProps {
   onPress: (i: number) => void;
   onLayout: (index: number, layout: { x: number, y: number, w: number, h: number }) => void;
 }
-function Cell({ index, value, isSelected, isWinCell, isOtherDimmed, fontSize, disabled, boardSize, onPress, onLayout }: CellProps) {
+function Cell({ index, value, isSelected, isWinCell, isOtherDimmed, size, fontSize, disabled, boardSize, onPress, onLayout }: any) {
   const scale = useSharedValue(1);
   const pulse = useSharedValue(1);
 
@@ -64,8 +58,8 @@ function Cell({ index, value, isSelected, isWinCell, isOtherDimmed, fontSize, di
   const animatedCellInner = useAnimatedStyle(() => ({
     transform: [{ scale: isWinCell ? pulse.value : scale.value }],
     opacity: isOtherDimmed && !isWinCell ? 0.4 : 1,
-    borderColor: isWinCell ? C.gold : isSelected ? C.gold : C.border,
-    backgroundColor: isSelected ? C.selectedBg : isWinCell ? '#2A2600' : C.card,
+    borderColor: isWinCell ? Colors.neonYellow : isSelected ? Colors.neonYellow : Colors.border,
+    backgroundColor: isSelected ? 'rgba(255,214,10,0.08)' : isWinCell ? 'rgba(255,214,10,0.15)' : Colors.card,
   }));
 
   const handle = () => {
@@ -77,21 +71,21 @@ function Cell({ index, value, isSelected, isWinCell, isOtherDimmed, fontSize, di
     onPress(index);
   };
 
-  const color = value === 'X' ? C.xColor : C.oColor;
-  const glow = value === 'X' ? C.xGlow : C.oGlow;
+  const color = value === 'X' ? Colors.neonPink : Colors.neonBlue;
+  const glow = value === 'X' ? Colors.neonPink : Colors.neonBlue;
 
   return (
     <Pressable 
       onLayout={handleLayout} 
       onPress={handle} 
       accessibilityLabel={`cell-${index}`} 
-      style={[ms.cellPress, { flexBasis: `${100 / boardSize}%` }]}
+      style={{ width: size, height: size }}
     >
       <Animated.View style={[ms.cellInner, animatedCellInner]}>
         {value && (
           <Text style={{ 
             fontSize, fontWeight: '900', color, 
-            textShadowColor: isWinCell ? C.gold : glow, 
+            textShadowColor: isWinCell ? Colors.neonYellow : glow, 
             textShadowOffset: { width: 0, height: 0 }, 
             textShadowRadius: isWinCell ? 20 : 12 
           }}>
@@ -139,11 +133,11 @@ function StrikeLine({ winLine, layouts }: { winLine: number[] | null, layouts: R
       left: startX,
       width: length,
       height: 6,
-      backgroundColor: C.gold,
+      backgroundColor: Colors.neonYellow,
       borderRadius: 4,
-      shadowColor: C.gold,
-      shadowOpacity: 0.8,
-      shadowRadius: 10,
+      shadowColor: Colors.neonYellow,
+      shadowOpacity: 0.85,
+      shadowRadius: 12,
       elevation: 10,
       zIndex: 20,
       opacity: 1,
@@ -159,7 +153,7 @@ function StrikeLine({ winLine, layouts }: { winLine: number[] | null, layouts: R
     };
   });
 
-  return <Animated.View style={animatedStyle} />;
+  return <Animated.View pointerEvents="none" style={animatedStyle} />;
 }
 
 
@@ -167,8 +161,8 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
   const { matchId, playerSide, myUid, myName } = route.params;
   const { width: W } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const BOARD_WIDTH = W * 0.9;
-  
+  const BOARD_WIDTH = W - 32;
+
   const { match, optimisticBoard, myTurn, error, applyMove, resign } = useMatch(matchId, myUid, playerSide);
   
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
@@ -176,11 +170,13 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
   const [showConfetti, setShowConfetti] = useState(false);
   const [tileLayouts, setTileLayouts] = useState<Record<number, any>>({});
   const [xpGained, setXpGained] = useState<number | null>(null);
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
   
   // Reanimated values for board focus
   const boardScale = useSharedValue(1);
   const resultScale = useSharedValue(0.8);
   const resultOpacity = useSharedValue(0);
+  const turnPulse = useSharedValue(1);
 
   const handleTileLayout = useCallback((index: number, layout: any) => {
     setTileLayouts(prev => ({ ...prev, [index]: layout }));
@@ -196,20 +192,61 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
     resultOpacity.value = 0;
   }, []);
 
+  // Turn pulse animation loop
+  useEffect(() => {
+    turnPulse.value = withRepeat(
+      withSequence(
+        withTiming(1.05, { duration: 600, easing: Easing.inOut(Easing.ease) }),
+        withTiming(1, { duration: 600, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      true
+    );
+  }, []);
+
   // Handle Round Reset
   useEffect(() => {
-    if (match?.status === 'active' && resultRecorded) {
+    if (match?.status === 'playing' && resultRecorded) {
       resetLocalState();
     }
   }, [match?.status, resultRecorded, resetLocalState]);
 
-  const board: Board = optimisticBoard ?? match?.board ?? Array(9).fill(null);
   const gridSize = match?.gridSize || 3;
+  const BOARD_BORDER = 2; // borderWidth on the board View
+  const cellSize = Math.floor((BOARD_WIDTH - BOARD_BORDER * 2) / gridSize);
+  const board: Board = optimisticBoard ?? match?.board ?? Array(gridSize * gridSize).fill(null);
   const winLength = match?.winLength || 3;
   const maxPieces = match?.maxPieces || 3;
-  
-  const cellSize = BOARD_WIDTH / gridSize;
   const boardFontSize = Math.floor(cellSize * 0.44);
+
+  // Timeout logic
+  useEffect(() => {
+    if (!match || match.status !== 'playing' || !match.turnStartedAt || !match.turnDuration) {
+      setTimeLeft(null);
+      return;
+    }
+
+    const startedMs = match.turnStartedAt.toMillis ? match.turnStartedAt.toMillis() : (match.turnStartedAt.seconds * 1000) || Date.now();
+    
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const diff = Math.floor((now - startedMs) / 1000);
+      const remaining = Math.max(0, match.turnDuration - diff);
+      setTimeLeft(remaining);
+
+      if (remaining === 0) {
+        clearInterval(interval);
+        // If it's NOT our turn, we claim the win.
+        if (match.currentPlayer !== playerSide) {
+          claimTimeoutWin(matchId, playerSide);
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [match?.turnStartedAt, match?.status, match?.currentPlayer, playerSide, matchId]);
+
+  console.log(`[DEBUG] MultiplayerGameScreen: gridSize=${gridSize}, cellSize=${cellSize}, BOARD_WIDTH=${BOARD_WIDTH}`);
 
   const phase = match ? (canPlace(board, playerSide, maxPieces) ? 'placement' : 'movement') : 'placement';
   const winner = match?.winner;
@@ -229,7 +266,7 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
 
   // Cinematic Win Sequence + Auto Next Round
   useEffect(() => {
-    if (match?.status === 'finished' || match?.status === 'ended') {
+    if (match?.status === 'finished' || match?.status === 'abandoned') {
       if (winner) {
         boardScale.value = withDelay(100, withTiming(1.05, { duration: 400 }));
         setTimeout(() => {
@@ -257,7 +294,7 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
   }, [match?.status, winner, isWinner, isLoser, myUid, resultRecorded, myStreak, matchId]);
 
   const handleCell = useCallback(async (index: number) => {
-    if (!match || !myTurn || match.status !== 'active') return;
+    if (!match || !myTurn || match.status !== 'playing') return;
     if (phase === 'placement') {
       if (board[index] !== null) return;
       await applyMove({ type: 'place', toIndex: index });
@@ -287,7 +324,7 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
   const statusLabel = !match ? 'Connecting…'
     : status === 'waiting' ? 'Waiting for opponent…'
     : status === 'finished' ? (isWinner ? 'Victory!' : isLoser ? 'Defeat' : 'Draw')
-    : status === 'ended' ? (isWinner ? 'Opponent left — You win!' : 'You left the match')
+    : status === 'abandoned' ? (isWinner ? 'Opponent left — You win!' : 'You left the match')
     : myTurn
       ? phase === 'placement' ? `Place Piece (${getPlayerPieces(board, playerSide).length}/${maxPieces})`
         : selectedIdx === null ? 'Select Piece'
@@ -303,14 +340,22 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
     transform: [{ scale: resultScale.value }]
   }));
 
+  const animatedMyCardStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: myTurn && status === 'playing' ? turnPulse.value : 1 }]
+  }));
+
+  const animatedOppCardStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: !myTurn && status === 'playing' ? turnPulse.value : 1 }]
+  }));
+
   return (
     <ScreenWrapper scroll={true} horizontalPadding={0}>
-      <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+      <StatusBar barStyle="light-content" backgroundColor={Colors.bg} />
 
       {/* Session Header */}
       <View style={ms.header}>
         <Pressable onPress={handleResign} style={ms.backBtn}>
-          <Ionicons name="close" size={24} color={C.xColor} />
+          <Ionicons name="close" size={24} color={Colors.neonPink} />
         </Pressable>
         <View style={ms.roundBadge}>
           <Text style={ms.roundTxt}>ROUND {match?.roundNumber || 1}</Text>
@@ -321,26 +366,26 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
       <View style={ms.content}>
         {/* Player HUD */}
         <View style={ms.players}>
-          <View style={[ms.playerCard, myTurn && status === 'active' && ms.activeCard]}>
-            <Text style={[ms.symbol, { color: playerSide === 'X' ? C.xColor : C.oColor }]}>{playerSide}</Text>
+          <Animated.View style={[ms.playerCard, myTurn && status === 'playing' && ms.activeCard, animatedMyCardStyle]}>
+            <Text style={[ms.symbol, { color: playerSide === 'X' ? Colors.neonPink : Colors.neonBlue }]}>{playerSide}</Text>
             <Text style={ms.score}>{myScore}</Text>
             {myStreak > 0 && <Text style={ms.streak}>🔥 {myStreak}</Text>}
             <Text style={ms.name} numberOfLines={1}>{myName}</Text>
-          </View>
+          </Animated.View>
           
           <View style={ms.vsContainer}>
             <Text style={ms.vsTxt}>VS</Text>
           </View>
 
-          <View style={[ms.playerCard, !myTurn && status === 'active' && ms.activeCard]}>
-            <Text style={[ms.symbol, { color: opponentSide === 'X' ? C.xColor : C.oColor }]}>{opponentSide}</Text>
+          <Animated.View style={[ms.playerCard, !myTurn && status === 'playing' && ms.activeCard, animatedOppCardStyle]}>
+            <Text style={[ms.symbol, { color: opponentSide === 'X' ? Colors.neonPink : Colors.neonBlue }]}>{opponentSide}</Text>
             <Text style={ms.score}>{oppScore}</Text>
             <Text style={ms.name} numberOfLines={1}>{opponentName}</Text>
-          </View>
+          </Animated.View>
         </View>
 
         {/* Dynamic Instruction Card */}
-        {status === 'active' && (
+        {status === 'playing' && (
           <View style={ms.instructionCard}>
             <View style={ms.instrRow}>
               <Text style={ms.instrEmoji}>🎯</Text>
@@ -357,11 +402,19 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
                   : '👉 Select a piece to move'}
               </Text>
             </View>
+            {timeLeft !== null && (
+              <View style={[ms.instrRow, { marginTop: 8 }]}>
+                <Text style={ms.instrEmoji}>⏱</Text>
+                <Text style={[ms.instrLabel, timeLeft <= 10 && ms.urgentTimeTxt]}>
+                  Time left: {timeLeft}s
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
         {/* Main Board */}
-        <Animated.View style={[ms.boardContainer, animatedBoardStyle, { alignSelf: 'center' }]}>
+        <Animated.View pointerEvents="auto" style={[ms.boardContainer, animatedBoardStyle, { alignSelf: 'center' }]}>
           <View 
             key={`board-${gridSize}`}
             style={[ms.board, { width: BOARD_WIDTH, height: BOARD_WIDTH }]}
@@ -374,8 +427,9 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
                 isSelected={selectedIdx === idx} 
                 isWinCell={winSet.has(idx)}
                 isOtherDimmed={!!winner}
+                size={cellSize}
                 fontSize={boardFontSize} 
-                disabled={!myTurn || status !== 'active'}
+                disabled={!myTurn || status !== 'playing'}
                 boardSize={gridSize}
                 onPress={handleCell}
                 onLayout={handleTileLayout}
@@ -390,22 +444,22 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
           <View style={ms.ruleTag}>
             <Text style={ms.ruleTxt}>{gridSize}x{gridSize} • {winLength} in a row</Text>
           </View>
-          <Text style={[ms.statusMain, { color: myTurn ? C.accentGlow : C.textSecondary }]}>
+          <Text style={[ms.statusMain, { color: myTurn ? Colors.neonPurple : Colors.textSecondary }]}> 
             {statusLabel}
           </Text>
           <Text style={ms.phaseMain}>{phase === 'placement' ? 'PLACEMENT' : 'MOVEMENT'}</Text>
         </View>
 
         {/* Result Overlay */}
-        {(status === 'finished' || status === 'ended') && (
+        {(status === 'finished' || status === 'abandoned') && (
           <View style={ms.footer}>
             <View style={ms.resultWrapper}>
               <Animated.View style={[ms.resultBanner, animatedResultStyle]}>
                 <Text style={[
                   ms.resultTitle, 
-                  { color: isWinner ? C.gold : isLoser ? C.xColor : C.textPrimary }
+                  { color: isWinner ? Colors.neonYellow : isLoser ? Colors.neonPink : Colors.textPrimary }
                 ]}>
-                  {status === 'ended' && isWinner ? 'OPPONENT LEFT' : isWinner ? 'VICTORY!' : isLoser ? 'DEFEAT' : 'DRAW'}
+                  {status === 'abandoned' && isWinner ? 'OPPONENT LEFT' : isWinner ? 'VICTORY!' : isLoser ? 'DEFEAT' : 'DRAW'}
                 </Text>
                 {xpGained && (
                   <View style={ms.xpBadge}>
@@ -420,7 +474,7 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
       </View>
 
       <View pointerEvents="none" style={ms.confettiOverlay}>
-        {showConfetti && <ConfettiCannon count={200} origin={{ x: W / 2, y: -20 }} fallSpeed={3000} fadeOut={true} />}
+        <NeonConfetti show={showConfetti} onComplete={() => setShowConfetti(false)} />
       </View>
     </ScreenWrapper>
   );
@@ -428,50 +482,110 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
 
 const ms = StyleSheet.create({
   confettiOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 999, elevation: 999 },
-  header: { 
-    flexDirection: 'row', alignItems: 'center', width: '100%', 
-    paddingHorizontal: 16, marginTop: 10, marginBottom: 20, gap: 10 
-  },
-  backBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.card, justifyContent: 'center', alignItems: 'center' },
-  roundBadge: { backgroundColor: C.accent, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 },
-  roundTxt: { color: '#FFF', fontWeight: '900', fontSize: 14, letterSpacing: 1 },
-  matchCode: { flex: 1, textAlign: 'right', color: C.textSecondary, fontWeight: '700', fontSize: 12 },
-  
-  content: { marginTop: 20, gap: 20, paddingHorizontal: 16 },
-  players: { 
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', 
-    gap: 15, width: '100%'
-  },
-  playerCard: { flex: 1, backgroundColor: C.card, borderRadius: 20, padding: 15, alignItems: 'center', borderWidth: 1, borderColor: C.border },
-  activeCard: { borderColor: C.accent, shadowColor: C.accent, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
-  symbol: { fontSize: 28, fontWeight: '900', marginBottom: 5 },
-  score: { fontSize: 24, fontWeight: '900', color: C.textPrimary },
-  streak: { fontSize: 12, color: C.gold, fontWeight: '800', marginTop: 2 },
-  name: { fontSize: 12, color: C.textSecondary, marginTop: 5, fontWeight: '600' },
-  vsContainer: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.surface, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: C.border },
-  vsTxt: { color: C.accentGlow, fontWeight: '900', fontSize: 12 },
 
-  boardContainer: { shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 20, elevation: 15 },
-  board: { flex: 0, flexDirection: 'row', flexWrap: 'wrap', backgroundColor: C.surface, borderRadius: 20, overflow: 'hidden', borderWidth: 2, borderColor: C.border },
-  
+  header: {
+    flexDirection: 'row', alignItems: 'center', width: '100%',
+    paddingHorizontal: 16, marginTop: 10, marginBottom: 20, gap: 10,
+  },
+  backBtn: {
+    width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.card,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.neonPink + '66',
+  },
+  roundBadge: {
+    backgroundColor: Colors.neonPurple + '22', paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: 12, borderWidth: 1, borderColor: Colors.neonPurple,
+    ...glow(Colors.neonPurple, 6),
+  },
+  roundTxt: { color: Colors.neonPurple, fontWeight: '900', fontSize: 13, letterSpacing: 1.5 },
+  matchCode: {
+    flex: 1, textAlign: 'right', color: Colors.textSecondary,
+    fontWeight: '700', fontSize: 11, letterSpacing: 1,
+  },
+
+  content: { marginTop: 20, gap: 20, paddingHorizontal: 16 },
+  players: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 15, width: '100%',
+  },
+  playerCard: {
+    flex: 1, backgroundColor: Colors.card, borderRadius: 20, padding: 15,
+    alignItems: 'center', borderWidth: 1, borderColor: Colors.border,
+  },
+  activeCard: {
+    borderColor: Colors.neonYellow, borderWidth: 2,
+    shadowColor: Colors.neonYellow, shadowOpacity: 0.75, shadowRadius: 20, elevation: 12,
+  },
+  symbol: { fontSize: 28, fontWeight: '900', marginBottom: 5 },
+  score: { fontSize: 26, fontWeight: '900', color: Colors.textPrimary },
+  streak: { fontSize: 11, color: Colors.neonYellow, fontWeight: '900', marginTop: 3 },
+  name: { fontSize: 11, color: Colors.textSecondary, marginTop: 5, fontWeight: '700', letterSpacing: 0.5 },
+  vsContainer: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: '#160B28',
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.neonPurple + '66',
+    ...glow(Colors.neonPurple, 5),
+  },
+  vsTxt: { color: Colors.neonPurple, fontWeight: '900', fontSize: 12 },
+
+  boardContainer: {
+    shadowColor: Colors.neonPurple, shadowOpacity: 0.35, shadowRadius: 28, elevation: 16,
+  },
+  board: {
+    flex: 0, flexDirection: 'row', flexWrap: 'wrap', backgroundColor: Colors.card,
+    borderRadius: 20, overflow: 'hidden',
+    borderWidth: 2, borderColor: Colors.neonPurple + '55',
+  },
+  cellPress: {},
+  cellInner: {
+    width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center',
+    borderWidth: 0.5, borderColor: Colors.border,
+  },
+
   hudInfo: { alignItems: 'center', marginTop: 10 },
-  ruleTag: { backgroundColor: C.card, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, marginBottom: 15 },
-  ruleTxt: { color: C.textSecondary, fontSize: 12, fontWeight: '700' },
-  statusMain: { fontSize: 22, fontWeight: '900', letterSpacing: 1, marginBottom: 5 },
-  phaseMain: { fontSize: 12, color: C.accentGlow, fontWeight: '800', letterSpacing: 2 },
+  ruleTag: {
+    backgroundColor: Colors.card, paddingHorizontal: 14, paddingVertical: 6,
+    borderRadius: 10, marginBottom: 12,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  ruleTxt: { color: Colors.textSecondary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  statusMain: { fontSize: 20, fontWeight: '900', letterSpacing: 1, marginBottom: 5 },
+  phaseMain: {
+    fontSize: 10, color: Colors.neonPurple, fontWeight: '900', letterSpacing: 3,
+    textShadowColor: Colors.neonPurple, textShadowRadius: 8,
+  },
 
   footer: { marginTop: 20, marginBottom: 40 },
   resultWrapper: { width: '100%' },
-  resultBanner: { backgroundColor: C.card, borderRadius: 24, padding: 25, alignItems: 'center', borderWidth: 2, borderColor: C.accentDim },
-  resultTitle: { fontSize: 32, fontWeight: '900', marginBottom: 15 },
-  xpBadge: { backgroundColor: '#FFD70022', borderColor: C.gold, borderWidth: 1, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 15, marginBottom: 15 },
-  xpTxt: { color: C.gold, fontWeight: '900', fontSize: 18 },
-  nextRoundTxt: { color: C.textSecondary, fontSize: 14, fontWeight: '600' },
+  resultBanner: {
+    backgroundColor: '#130820', borderRadius: 24, padding: 28,
+    alignItems: 'center', borderWidth: 2, borderColor: Colors.neonPurple,
+    ...glow(Colors.neonPurple, 22),
+  },
+  resultTitle: { fontSize: 34, fontWeight: '900', marginBottom: 14, letterSpacing: 2 },
+  xpBadge: {
+    backgroundColor: 'rgba(255,214,10,0.12)', borderColor: Colors.neonYellow,
+    borderWidth: 1, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 14, marginBottom: 14,
+    ...glow(Colors.neonYellow, 6),
+  },
+  xpTxt: { color: Colors.neonYellow, fontWeight: '900', fontSize: 18 },
+  nextRoundTxt: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
 
-  instructionCard: { width: '100%', backgroundColor: C.card, borderRadius: 20, padding: 15, borderWidth: 1, borderColor: C.border },
+  instructionCard: {
+    width: '100%', backgroundColor: Colors.card, borderRadius: 20, padding: 15,
+    borderWidth: 1, borderColor: Colors.border,
+    ...glow(Colors.neonPurple, 4),
+  },
   instrRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5, gap: 10 },
-  instrEmoji: { fontSize: 18 },
-  instrLabel: { color: C.textPrimary, fontSize: 14, fontWeight: '700' },
-  instrHintBox: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.border },
-  instrHintTxt: { color: C.accentGlow, fontSize: 14, fontWeight: '800' },
+  instrEmoji: { fontSize: 17 },
+  instrLabel: { color: Colors.textPrimary, fontSize: 13, fontWeight: '700' },
+  instrHintBox: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.border },
+  instrHintTxt: { color: Colors.neonPurple, fontSize: 13, fontWeight: '900' },
+  urgentTimeTxt: {
+    color: Colors.neonPink,
+    fontWeight: '800',
+    textShadowColor: Colors.neonPink,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
+  },
 });

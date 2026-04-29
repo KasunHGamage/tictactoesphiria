@@ -35,6 +35,8 @@ export async function createMatch(uid: string, displayName: string, config: Game
     currentPlayer: 'X',
     phase: 'placement',
     status: 'waiting',
+    turnStartedAt: serverTimestamp(),
+    turnDuration: 60,
     winner: null,
     winningLine: null,
     playerX: { uid, displayName },
@@ -60,7 +62,8 @@ export async function joinMatch(matchId: string, uid: string, displayName: strin
     
     tx.update(matchRef(matchId), {
       playerO: { uid, displayName },
-      status: 'active',
+      status: 'playing',
+      turnStartedAt: serverTimestamp(),
       [`scores.${uid}`]: 0,
       [`winStreaks.${uid}`]: 0,
       updatedAt: serverTimestamp(),
@@ -79,7 +82,7 @@ export async function applyMove(matchId: string, payload: MovePayload, playerSid
     const snap = await tx.get(matchRef(matchId));
     const data = snap.data() as MatchDocument;
 
-    if (data.status !== 'active') throw new Error('Match is not active');
+    if (data.status !== 'playing') throw new Error('Match is not playing');
     if (data.currentPlayer !== playerSide || data.moveCount !== expectedMoveCount) {
       throw new Error('Sync error or not your turn');
     }
@@ -99,6 +102,7 @@ export async function applyMove(matchId: string, payload: MovePayload, playerSid
       currentPlayer: nextPlayer,
       phase: canPlace(nextBoard, nextPlayer, data.maxPieces) ? 'placement' : 'movement',
       moveCount: data.moveCount + 1,
+      turnStartedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
 
@@ -125,7 +129,7 @@ export async function startNextRound(matchId: string): Promise<void> {
     if (!snap.exists()) return;
     const data = snap.data() as MatchDocument;
     
-    if (data.status !== 'finished' && data.status !== 'ended') return;
+    if (data.status !== 'finished' && data.status !== 'abandoned') return;
 
     const nextRound = data.roundNumber + 1;
 
@@ -134,10 +138,11 @@ export async function startNextRound(matchId: string): Promise<void> {
       roundNumber: nextRound,
       currentPlayer: 'X', 
       phase: 'placement',
-      status: 'active',
+      status: 'playing',
       winner: null,
       winningLine: null,
       moveCount: 0,
+      turnStartedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
   });
@@ -149,14 +154,37 @@ export async function resignMatch(matchId: string, resigningUid: string): Promis
     if (!snap.exists()) return;
     const data = snap.data() as MatchDocument;
 
-    if (data.status !== 'active') return;
+    if (data.status !== 'playing') return;
 
     const winner = resigningUid === data.playerX.uid ? 'O' : 'X';
     
     tx.update(matchRef(matchId), { 
-      status: 'ended', 
+      status: 'abandoned', 
       winner,
       updatedAt: serverTimestamp() 
+    });
+  });
+}
+
+export async function claimTimeoutWin(matchId: string, claimerSide: Player): Promise<void> {
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(matchRef(matchId));
+    if (!snap.exists()) return;
+    const data = snap.data() as MatchDocument;
+
+    if (data.status !== 'playing' || data.currentPlayer === claimerSide) return;
+    if (!data.turnStartedAt || !data.turnDuration) return;
+
+    const winnerUid = claimerSide === 'X' ? data.playerX.uid : data.playerO!.uid;
+    const loserUid = claimerSide === 'X' ? data.playerO!.uid : data.playerX.uid;
+
+    tx.update(matchRef(matchId), {
+      status: 'finished',
+      winner: claimerSide,
+      [`scores.${winnerUid}`]: (data.scores[winnerUid] || 0) + 1,
+      [`winStreaks.${winnerUid}`]: (data.winStreaks[winnerUid] || 0) + 1,
+      [`winStreaks.${loserUid}`]: 0,
+      updatedAt: serverTimestamp()
     });
   });
 }

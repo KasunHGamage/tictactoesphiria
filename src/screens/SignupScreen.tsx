@@ -1,25 +1,23 @@
 // ─────────────────────────────────────────────
-//  SignupScreen.tsx — User Registration
+//  SignupScreen.tsx — Retro Neon Arcade Signup
 // ─────────────────────────────────────────────
 
 import React, { useState } from 'react';
 import ScreenWrapper from '../components/ScreenWrapper';
-import { 
-  StyleSheet, Text, TextInput, Pressable, View, 
-  ActivityIndicator, Alert, KeyboardAvoidingView, Platform 
+import {
+  StyleSheet, Text, TextInput, View, Pressable,
+  ActivityIndicator, Alert, KeyboardAvoidingView, Platform
 } from 'react-native';
+import NeonButton from '../components/NeonButton';
+import { Colors, Spacing, textGlow, glow } from '../../constants/theme';
 import { signUp } from '../services/authService';
-
-const C = {
-  bg: '#0D0D1A', card: '#1C1C3A', border: '#2A2A5A',
-  accent: '#7C5CFC', textPrimary: '#F0F0FF', textSecondary: '#8888AA',
-};
 
 export default function SignupScreen({ navigation }: any) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
 
   const handleSignup = async () => {
     if (!name || !email || !password) return;
@@ -33,10 +31,16 @@ export default function SignupScreen({ navigation }: any) {
     }
   };
 
+  const inputStyle = (field: string) => [
+    s.input,
+    focusedField === field && s.inputFocused,
+  ];
+
   return (
     <ScreenWrapper>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.flex}>
         <View style={s.header}>
+          <Text style={s.brand}>SPHERIA</Text>
           <Text style={s.title}>Join the Game</Text>
           <Text style={s.subtitle}>Create an account to start playing</Text>
         </View>
@@ -44,51 +48,60 @@ export default function SignupScreen({ navigation }: any) {
         <View style={s.content}>
           <View style={s.inputGroup}>
             <Text style={s.label}>FULL NAME</Text>
-            <TextInput 
-              style={s.input} 
-              placeholder="Enter your name" 
-              placeholderTextColor={C.textSecondary}
+            <TextInput
+              style={inputStyle('name')}
+              placeholder="Enter your name"
+              placeholderTextColor={Colors.textSecondary}
               value={name}
               onChangeText={setName}
+              onFocus={() => setFocusedField('name')}
+              onBlur={() => setFocusedField(null)}
             />
           </View>
 
           <View style={s.inputGroup}>
             <Text style={s.label}>EMAIL</Text>
-            <TextInput 
-              style={s.input} 
-              placeholder="Enter your email" 
-              placeholderTextColor={C.textSecondary}
+            <TextInput
+              style={inputStyle('email')}
+              placeholder="Enter your email"
+              placeholderTextColor={Colors.textSecondary}
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
               keyboardType="email-address"
+              onFocus={() => setFocusedField('email')}
+              onBlur={() => setFocusedField(null)}
             />
           </View>
 
           <View style={s.inputGroup}>
             <Text style={s.label}>PASSWORD</Text>
-            <TextInput 
-              style={s.input} 
-              placeholder="••••••••" 
-              placeholderTextColor={C.textSecondary}
+            <TextInput
+              style={inputStyle('password')}
+              placeholder="••••••••"
+              placeholderTextColor={Colors.textSecondary}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
+              onFocus={() => setFocusedField('password')}
+              onBlur={() => setFocusedField(null)}
             />
           </View>
 
           <View style={s.footer}>
-            <Pressable 
-              style={[s.btn, loading && s.btnDisabled]} 
-              onPress={handleSignup}
-              disabled={loading}
-            >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Create Account</Text>}
-            </Pressable>
+            {loading ? (
+              <View style={s.loadingWrap}>
+                <ActivityIndicator color={Colors.neonPink} />
+              </View>
+            ) : (
+              <NeonButton title="CREATE ACCOUNT" onPress={handleSignup} />
+            )}
 
             <Pressable onPress={() => navigation.navigate('Login')} style={s.link}>
-              <Text style={s.linkText}>Already have an account? <Text style={s.linkHighlight}>Login</Text></Text>
+              <Text style={s.linkText}>
+                Already have an account?{'  '}
+                <Text style={s.linkHighlight}>Login</Text>
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -99,24 +112,45 @@ export default function SignupScreen({ navigation }: any) {
 
 const s = StyleSheet.create({
   flex: { flex: 1 },
-  header: { marginTop: 40, marginBottom: 20 },
-  content: { marginTop: 20, gap: 20 },
-  footer: { marginTop: 20 },
-  title: { fontSize: 32, fontWeight: '900', color: C.accent, marginBottom: 8, letterSpacing: 1 },
-  subtitle: { fontSize: 16, color: C.textSecondary, marginBottom: 20 },
-  inputGroup: { marginBottom: 12 },
-  label: { fontSize: 12, fontWeight: '800', color: C.textSecondary, marginBottom: 8, letterSpacing: 2 },
-  input: { 
-    backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, 
-    padding: 16, color: C.textPrimary, fontSize: 16 
+  header: { marginTop: Spacing.xl, marginBottom: Spacing.lg },
+  content: { gap: Spacing.sm },
+  footer: { marginTop: Spacing.lg, gap: Spacing.md },
+
+  brand: {
+    fontSize: 11, fontWeight: '900', color: Colors.neonPink,
+    letterSpacing: 6, marginBottom: 16,
+    ...textGlow(Colors.neonPink),
   },
-  btn: { 
-    backgroundColor: C.accent, borderRadius: 14, padding: 18, alignItems: 'center', 
-    shadowColor: C.accent, shadowOpacity: 0.3, shadowRadius: 10 
+  title: {
+    fontSize: 34, fontWeight: '900', color: Colors.textPrimary,
+    marginBottom: 6, letterSpacing: 0.5,
+    ...textGlow(Colors.neonPurple),
   },
-  btnDisabled: { opacity: 0.6 },
-  btnText: { color: '#FFF', fontSize: 18, fontWeight: '800' },
-  link: { marginTop: 20, alignItems: 'center' },
-  linkText: { color: C.textSecondary, fontSize: 14 },
-  linkHighlight: { color: C.accent, fontWeight: '800' },
+  subtitle: { fontSize: 14, color: Colors.textSecondary },
+
+  inputGroup: { gap: 8 },
+  label: {
+    fontSize: 10, fontWeight: '900', color: Colors.textSecondary,
+    letterSpacing: 3,
+  },
+  input: {
+    backgroundColor: Colors.card,
+    borderRadius: 14, borderWidth: 1, borderColor: Colors.border,
+    padding: Spacing.md, color: Colors.textPrimary, fontSize: 15,
+  },
+  inputFocused: {
+    borderColor: Colors.neonPink,
+    ...(glow(Colors.neonPink, 8) as any),
+  },
+
+  loadingWrap: {
+    height: 52, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.border, borderRadius: 14,
+  },
+  link: { alignItems: 'center', paddingVertical: 4 },
+  linkText: { color: Colors.textSecondary, fontSize: 14 },
+  linkHighlight: {
+    color: Colors.neonPurple, fontWeight: '900',
+    ...textGlow(Colors.neonPurple),
+  },
 });

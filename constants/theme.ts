@@ -1,53 +1,73 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * Retro Neon Arcade Design System
+ * Premium dark base + electric neon accents
  */
 
 import { Platform } from 'react-native';
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
-
+// ── Color Palette ──────────────────────────────────────────────────
 export const Colors = {
-  light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
-  },
-  dark: {
-    text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
-  },
-};
+  // Base
+  bg:     '#07070D',
+  card:   '#11111A',
+  border: '#2B2B44',
 
-export const Fonts = Platform.select({
-  ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'ui-monospace',
-  },
-  default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
-  },
-  web: {
-    sans: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-    serif: "Georgia, 'Times New Roman', serif",
-    rounded: "'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif",
-    mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-  },
+  // Primary
+  neonPurple: '#9D4EDD',
+  neonPink:   '#FF2D9B',
+  neonBlue:   '#00E5FF',
+  neonGreen:  '#39FF14',
+  neonYellow: '#FFD60A',
+
+  // Text
+  textPrimary:   '#FFFFFF',
+  textSecondary: '#7878A0',
+
+  // States
+  win:  '#39FF14',
+  lose: '#FF3355',
+
+  // Aliases used across codebase
+  success:    '#39FF14',
+  accentGlow: '#BF7FFF',
+} as const;
+
+// ── Spacing ─────────────────────────────────────────────────────────
+export const Spacing = {
+  xs: 8,
+  sm: 12,
+  md: 16,
+  lg: 20,
+  xl: 28,
+} as const;
+
+// ── Typography ───────────────────────────────────────────────────────
+export const Typography = {
+  fontFamily: Platform.select({
+    ios: 'Orbitron', android: 'Orbitron', default: 'Orbitron',
+  }) as string,
+  titleSize: 32,
+  labelSize: 12,
+  bodySize:  16,
+} as const;
+
+// ── Glow Helpers ─────────────────────────────────────────────────────
+export const glow = (color: string, radius = 14) => ({
+  shadowColor:   color,
+  shadowOffset:  { width: 0, height: 0 },
+  shadowOpacity: 0.9,
+  shadowRadius:  radius,
+  elevation:     12,
 });
+
+export const glowStrong = (color: string) => glow(color, 24);
+export const glowSubtle = (color: string) => glow(color, 8);
+
+// ── Text glow (textShadow for headings) ────────────────────────────
+export const textGlow = (color: string) => ({
+  textShadowColor:  color,
+  textShadowOffset: { width: 0, height: 0 },
+  textShadowRadius: 12,
+});
+
+export default { Colors, Spacing, Typography, glow, glowStrong, glowSubtle, textGlow };

@@ -1,19 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import ScreenWrapper from '../components/ScreenWrapper';
-import { 
-  StyleSheet, Text, Pressable, View, 
-  ActivityIndicator, RefreshControl 
+import {
+  StyleSheet, Text, Pressable, View,
+  ActivityIndicator, RefreshControl
 } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { getUserProfile, UserProfile } from '../services/userService';
 import { logout } from '../services/authService';
-
-const C = {
-  bg: '#0D0D1A', card: '#1C1C3A', border: '#2A2A5A',
-  accent: '#7C5CFC', accentGlow: '#9B7DFF', 
-  textPrimary: '#F0F0FF', textSecondary: '#8888AA',
-  xColor: '#FF6B8A', oColor: '#4FC3F7',
-};
+import { Colors, Spacing, glow, glowStrong, textGlow } from '../../constants/theme';
 
 export default function ProfileScreen() {
   const { user } = useAuth();
@@ -34,19 +28,13 @@ export default function ProfileScreen() {
     }
   };
 
-  useEffect(() => {
-    fetchProfile();
-  }, [user]);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchProfile();
-  };
+  useEffect(() => { fetchProfile(); }, [user]);
+  const onRefresh = () => { setRefreshing(true); fetchProfile(); };
 
   if (loading) {
     return (
-      <View style={[s.center, { flex: 1, backgroundColor: C.bg }]}>
-        <ActivityIndicator color={C.accent} size="large" />
+      <View style={s.center}>
+        <ActivityIndicator color={Colors.neonPurple} size="large" />
       </View>
     );
   }
@@ -55,11 +43,16 @@ export default function ProfileScreen() {
     ? ((profile.wins / (profile.wins + profile.losses)) * 100).toFixed(1)
     : '0.0';
 
+  const initial = profile?.displayName?.charAt(0).toUpperCase() ?? '?';
+
   return (
     <ScreenWrapper>
-      <View style={s.header}>
-        <View style={s.avatarCircle}>
-          <Text style={s.avatarText}>{profile?.displayName?.charAt(0).toUpperCase()}</Text>
+      {/* Avatar Section */}
+      <View style={s.avatarSection}>
+        <View style={s.avatarRing}>
+          <View style={s.avatarCircle}>
+            <Text style={s.avatarText}>{initial}</Text>
+          </View>
         </View>
         <Text style={s.name}>{profile?.displayName}</Text>
         <View style={s.gameIdBadge}>
@@ -67,78 +60,127 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      <View style={s.content}>
-        <View style={s.statsContainer}>
-          <View style={s.statBox}>
-            <Text style={s.statValue}>{profile?.wins}</Text>
-            <Text style={s.statLabel}>WINS</Text>
-          </View>
-          <View style={s.statBox}>
-            <Text style={s.statValue}>{profile?.losses}</Text>
-            <Text style={s.statLabel}>LOSSES</Text>
-          </View>
-          <View style={s.statBox}>
-            <Text style={s.statValue}>{winRate}%</Text>
-            <Text style={s.statLabel}>WIN RATE</Text>
-          </View>
+      {/* Stats */}
+      <View style={s.statsRow}>
+        <View style={s.statBox}>
+          <Text style={[s.statVal, { color: Colors.neonGreen }]}>{profile?.wins}</Text>
+          <Text style={s.statLab}>WINS</Text>
         </View>
-
-        <View style={s.infoSection}>
-          <Text style={s.sectionTitle}>ACCOUNT INFO</Text>
-          <View style={s.infoRow}>
-            <Text style={s.infoLabel}>Email</Text>
-            <Text style={s.infoValue}>{profile?.email}</Text>
-          </View>
-          <View style={s.infoRow}>
-            <Text style={s.infoLabel}>Member Since</Text>
-            <Text style={s.infoValue}>
-              {profile?.createdAt?.toDate ? profile.createdAt.toDate().toLocaleDateString() : '—'}
-            </Text>
-          </View>
+        <View style={s.statDivider} />
+        <View style={s.statBox}>
+          <Text style={[s.statVal, { color: Colors.lose }]}>{profile?.losses}</Text>
+          <Text style={s.statLab}>LOSSES</Text>
         </View>
-
-        <View style={s.footer}>
-          <Pressable style={s.logoutBtn} onPress={logout}>
-            <Text style={s.logoutBtnText}>Logout</Text>
-          </Pressable>
+        <View style={s.statDivider} />
+        <View style={s.statBox}>
+          <Text style={[s.statVal, { color: Colors.neonBlue }]}>{winRate}%</Text>
+          <Text style={s.statLab}>WIN RATE</Text>
         </View>
       </View>
+
+      {/* Account Info */}
+      <View style={s.infoCard}>
+        <Text style={s.sectionTitle}>ACCOUNT INFO</Text>
+        <View style={s.infoRow}>
+          <Text style={s.infoLabel}>Email</Text>
+          <Text style={s.infoValue} numberOfLines={1}>{profile?.email}</Text>
+        </View>
+        <View style={[s.infoRow, { borderBottomWidth: 0 }]}>
+          <Text style={s.infoLabel}>Member Since</Text>
+          <Text style={s.infoValue}>
+            {profile?.createdAt?.toDate
+              ? profile.createdAt.toDate().toLocaleDateString()
+              : '—'}
+          </Text>
+        </View>
+      </View>
+
+      {/* Logout */}
+      <Pressable
+        style={({ pressed }) => [s.logoutBtn, pressed && { opacity: 0.75, transform: [{ scale: 0.98 }] }]}
+        onPress={logout}
+      >
+        <Text style={s.logoutText}>⏻  LOGOUT</Text>
+      </Pressable>
     </ScreenWrapper>
   );
 }
 
 const s = StyleSheet.create({
-  center: { justifyContent: 'center', alignItems: 'center' },
-  header: { marginTop: 10, marginBottom: 20, alignItems: 'center' },
-  content: { marginTop: 20, gap: 20 },
-  footer: { marginTop: 20 },
-  avatarCircle: { 
-    width: 100, height: 100, borderRadius: 50, backgroundColor: C.card, 
-    borderWidth: 2, borderColor: C.accent, justifyContent: 'center', alignItems: 'center',
-    marginBottom: 16, shadowColor: C.accent, shadowOpacity: 0.2, shadowRadius: 15
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.bg },
+
+  // Avatar
+  avatarSection: { alignItems: 'center', marginTop: Spacing.md, marginBottom: Spacing.lg },
+  avatarRing: {
+    width: 112, height: 112, borderRadius: 56,
+    borderWidth: 2, borderColor: Colors.neonPurple,
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: 16,
+    ...(glowStrong(Colors.neonPurple) as any),
   },
-  avatarText: { fontSize: 40, fontWeight: '900', color: C.accentGlow },
-  name: { fontSize: 24, fontWeight: '800', color: C.textPrimary, marginBottom: 8 },
-  gameIdBadge: { backgroundColor: C.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 4 },
-  gameIdText: { fontSize: 14, color: C.accentGlow, fontWeight: '700', letterSpacing: 1 },
-  statsContainer: { 
-    flexDirection: 'row', backgroundColor: C.card, borderRadius: 20, 
-    padding: 20, borderWidth: 1, borderColor: C.border 
+  avatarCircle: {
+    width: 96, height: 96, borderRadius: 48,
+    backgroundColor: '#1A0B2E',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  avatarText: {
+    fontSize: 40, fontWeight: '900', color: Colors.neonPurple,
+    ...textGlow(Colors.neonPurple),
+  },
+  name: {
+    fontSize: 24, fontWeight: '900', color: Colors.textPrimary,
+    marginBottom: 8,
+    ...textGlow(Colors.neonPurple),
+  },
+  gameIdBadge: {
+    backgroundColor: Colors.card, borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 5,
+    borderWidth: 1, borderColor: Colors.neonPurple + '55',
+  },
+  gameIdText: {
+    fontSize: 13, color: Colors.neonPurple, fontWeight: '800', letterSpacing: 1.5,
+    ...textGlow(Colors.neonPurple),
+  },
+
+  // Stats
+  statsRow: {
+    flexDirection: 'row', backgroundColor: Colors.card,
+    borderRadius: 20, padding: Spacing.lg,
+    borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', marginBottom: Spacing.md,
+    ...(glow(Colors.neonPurple, 6) as any),
   },
   statBox: { flex: 1, alignItems: 'center' },
-  statValue: { fontSize: 24, fontWeight: '900', color: C.textPrimary, marginBottom: 4 },
-  statLabel: { fontSize: 10, fontWeight: '800', color: C.textSecondary, letterSpacing: 1 },
-  infoSection: { marginBottom: 12 },
-  sectionTitle: { fontSize: 12, fontWeight: '800', color: C.textSecondary, letterSpacing: 2, marginBottom: 16 },
-  infoRow: { 
-    flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, 
-    borderBottomWidth: 1, borderBottomColor: C.border 
+  statVal: { fontSize: 22, fontWeight: '900', marginBottom: 4 },
+  statLab: { fontSize: 9, fontWeight: '900', color: Colors.textSecondary, letterSpacing: 1.5 },
+  statDivider: { width: 1, height: 36, backgroundColor: Colors.border },
+
+  // Info card
+  infoCard: {
+    backgroundColor: Colors.card, borderRadius: 20,
+    padding: Spacing.lg, borderWidth: 1, borderColor: Colors.border,
+    marginBottom: Spacing.md,
   },
-  infoLabel: { fontSize: 14, color: C.textSecondary },
-  infoValue: { fontSize: 14, color: C.textPrimary, fontWeight: '600' },
-  logoutBtn: { 
-    backgroundColor: '#2A1010', borderRadius: 14, padding: 18, alignItems: 'center', 
-    borderWidth: 1, borderColor: '#4A1010' 
+  sectionTitle: {
+    fontSize: 10, fontWeight: '900', color: Colors.textSecondary,
+    letterSpacing: 3, marginBottom: Spacing.md,
   },
-  logoutBtnText: { color: '#FF6B8A', fontSize: 16, fontWeight: '800' },
+  infoRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  infoLabel: { fontSize: 13, color: Colors.textSecondary },
+  infoValue: { fontSize: 13, color: Colors.textPrimary, fontWeight: '700', maxWidth: '60%', textAlign: 'right' },
+
+  // Logout
+  logoutBtn: {
+    backgroundColor: '#150008',
+    borderRadius: 14, padding: Spacing.lg,
+    alignItems: 'center', borderWidth: 1.5,
+    borderColor: Colors.neonPink + '88',
+    ...(glow(Colors.lose, 6) as any),
+    marginBottom: Spacing.xl,
+  },
+  logoutText: { color: Colors.neonPink, fontSize: 14, fontWeight: '900', letterSpacing: 2 },
 });

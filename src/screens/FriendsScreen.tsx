@@ -1,51 +1,38 @@
 import React, { useEffect, useState } from 'react';
 import ScreenWrapper from '../components/ScreenWrapper';
-import { 
-  StyleSheet, Text, View, ActivityIndicator, 
-  TextInput, Pressable, Alert, SectionList 
+import {
+  StyleSheet, Text, View, ActivityIndicator,
+  TextInput, Pressable, Alert, SectionList
 } from 'react-native';
+import { Colors, Spacing, glow, textGlow } from '../../constants/theme';
 import { useAuth } from '../auth/AuthContext';
 import { getUserByGameId, getUserProfile, UserProfile } from '../services/userService';
-import { 
-  sendFriendRequest, acceptFriendRequest, rejectFriendRequest, 
-  listenToRequests, listenToFriends 
+import {
+  sendFriendRequest, acceptFriendRequest, rejectFriendRequest,
+  listenToRequests, listenToFriends
 } from '../services/friendsService';
 import { useMatchInvitations } from '../hooks/useMatchInvitations';
 import { MatchInvite } from '../services/matchTypes';
-
-const C = {
-  bg: '#0D0D1A', card: '#1C1C3A', border: '#2A2A5A',
-  accent: '#7C5CFC', accentGlow: '#9B7DFF', 
-  textPrimary: '#F0F0FF', textSecondary: '#8888AA',
-  success: '#4ADE80', danger: '#FF6B8A',
-};
 
 export default function FriendsScreen() {
   const { user } = useAuth();
   const [searchId, setSearchId] = useState('');
   const [searching, setSearching] = useState(false);
-  
   const [friends, setFriends] = useState<UserProfile[]>([]);
   const [friendRequests, setFriendRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Invitation system hook
   const { incoming: matchInvites, inviteFriend, accept, reject } = useMatchInvitations(() => {});
 
   useEffect(() => {
     if (!user) return;
-
     const unsubReqs = listenToRequests(user.uid, setFriendRequests);
     const unsubFriends = listenToFriends(user.uid, async (uids) => {
       const profiles = await Promise.all(uids.map(uid => getUserProfile(uid)));
       setFriends(profiles.filter(p => p !== null) as UserProfile[]);
       setLoading(false);
     });
-
-    return () => {
-      unsubReqs();
-      unsubFriends();
-    };
+    return () => { unsubReqs(); unsubFriends(); };
   }, [user]);
 
   const handleSearch = async () => {
@@ -60,7 +47,7 @@ export default function FriendsScreen() {
       } else {
         Alert.alert('Add Friend', `Send friend request to ${target.displayName}?`, [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Send', onPress: () => sendFriendRequest(user!.uid, user!.displayName!, target.uid) }
+          { text: 'Send', onPress: () => sendFriendRequest(user!.uid, user!.displayName!, target.uid) },
         ]);
       }
     } finally {
@@ -69,33 +56,50 @@ export default function FriendsScreen() {
     }
   };
 
+  // ── Render Helpers ────────────────────────────────────────────────
+
+  const statusColor = (status: string) =>
+    status === 'online' ? Colors.neonGreen :
+    status === 'in-match' ? Colors.neonBlue :
+    Colors.textSecondary;
+
   const renderFriend = ({ item }: { item: UserProfile }) => (
     <View style={s.item}>
-      <View style={[s.statusDot, { backgroundColor: item.status === 'online' ? C.success : item.status === 'in-match' ? C.accentGlow : C.textSecondary }]} />
+      <View style={[s.statusDot, { backgroundColor: statusColor(item.status) }]} />
       <View style={s.info}>
         <Text style={s.nameText}>{item.displayName}</Text>
-        <Text style={s.statusText}>{item.status.toUpperCase()}</Text>
+        <Text style={[s.statusText, { color: statusColor(item.status) }]}>
+          {item.status.toUpperCase()}
+        </Text>
       </View>
-      <Pressable 
-        style={s.inviteBtn} 
-        onPress={() => inviteFriend(item.uid).then(() => Alert.alert('Sent', 'Match invitation sent!'))}
+      <Pressable
+        style={({ pressed }) => [s.inviteBtn, pressed && { opacity: 0.75 }]}
+        onPress={() =>
+          inviteFriend(item.uid).then(() => Alert.alert('Sent', 'Match invitation sent!'))
+        }
       >
-        <Text style={s.inviteBtnText}>Invite</Text>
+        <Text style={s.inviteBtnText}>INVITE ⚔️</Text>
       </Pressable>
     </View>
   );
 
   const renderFriendRequest = ({ item }: { item: any }) => (
-    <View style={s.item}>
+    <View style={[s.item, s.requestItem]}>
       <View style={s.info}>
         <Text style={s.nameText}>{item.fromName}</Text>
-        <Text style={s.statusText}>FRIEND REQUEST</Text>
+        <Text style={[s.statusText, { color: Colors.neonYellow }]}>FRIEND REQUEST</Text>
       </View>
       <View style={s.actions}>
-        <Pressable style={[s.actionBtn, s.acceptBtn]} onPress={() => acceptFriendRequest(item.id, item.from, user!.uid)}>
+        <Pressable
+          style={[s.actionBtn, s.acceptBtn]}
+          onPress={() => acceptFriendRequest(item.id, item.from, user!.uid)}
+        >
           <Text style={s.actionBtnText}>✓</Text>
         </Pressable>
-        <Pressable style={[s.actionBtn, s.rejectBtn]} onPress={() => rejectFriendRequest(item.id)}>
+        <Pressable
+          style={[s.actionBtn, s.rejectBtn]}
+          onPress={() => rejectFriendRequest(item.id)}
+        >
           <Text style={s.actionBtnText}>✕</Text>
         </Pressable>
       </View>
@@ -103,10 +107,10 @@ export default function FriendsScreen() {
   );
 
   const renderMatchInvite = ({ item }: { item: MatchInvite }) => (
-    <View style={[s.item, { borderColor: C.accentGlow, borderWidth: 2 }]}>
+    <View style={[s.item, s.matchInviteItem]}>
       <View style={s.info}>
         <Text style={s.nameText}>{item.fromName}</Text>
-        <Text style={[s.statusText, { color: C.accentGlow }]}>MATCH INVITATION</Text>
+        <Text style={[s.statusText, { color: Colors.neonPink }]}>⚔️ MATCH INVITATION</Text>
       </View>
       <View style={s.actions}>
         <Pressable style={[s.actionBtn, s.acceptBtn]} onPress={() => accept(item)}>
@@ -120,26 +124,43 @@ export default function FriendsScreen() {
   );
 
   const sections = [
-    ...(matchInvites.length > 0 ? [{ title: 'MATCH INVITES', data: matchInvites, type: 'match' }] : []),
-    ...(friendRequests.length > 0 ? [{ title: 'FRIEND REQUESTS', data: friendRequests, type: 'friendReq' }] : []),
+    ...(matchInvites.length > 0  ? [{ title: 'MATCH INVITES',    data: matchInvites,    type: 'match' }]     : []),
+    ...(friendRequests.length > 0 ? [{ title: 'FRIEND REQUESTS',  data: friendRequests,  type: 'friendReq' }] : []),
     { title: 'FRIENDS', data: friends, type: 'friend' },
   ];
 
   if (loading) {
-    return <View style={[s.center, { flex: 1, backgroundColor: C.bg }]}><ActivityIndicator color={C.accent} size="large" /></View>;
+    return (
+      <View style={s.center}>
+        <ActivityIndicator color={Colors.neonPurple} size="large" />
+      </View>
+    );
   }
 
   return (
     <ScreenWrapper scroll={false} horizontalPadding={0}>
+      {/* Header + Search */}
       <View style={s.header}>
-        <Text style={s.title}>Social Hub</Text>
-        <View style={s.searchContainer}>
-          <TextInput 
-            style={s.searchInput} placeholder="Search by Game ID" placeholderTextColor={C.textSecondary}
-            value={searchId} onChangeText={t => setSearchId(t.toUpperCase())} maxLength={6}
+        <Text style={s.eyebrow}>👥 SOCIAL HUB</Text>
+        <Text style={s.title}>Friends</Text>
+        <View style={s.searchRow}>
+          <TextInput
+            style={s.searchInput}
+            placeholder="Search by Game ID"
+            placeholderTextColor={Colors.textSecondary}
+            value={searchId}
+            onChangeText={t => setSearchId(t.toUpperCase())}
+            maxLength={6}
           />
-          <Pressable style={s.searchBtn} onPress={handleSearch} disabled={searching || searchId.length !== 6}>
-            {searching ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.searchBtnText}>Add</Text>}
+          <Pressable
+            style={[s.searchBtn, searchId.length !== 6 && { opacity: 0.45 }]}
+            onPress={handleSearch}
+            disabled={searching || searchId.length !== 6}
+          >
+            {searching
+              ? <ActivityIndicator color={Colors.textPrimary} size="small" />
+              : <Text style={s.searchBtnText}>ADD</Text>
+            }
           </Pressable>
         </View>
       </View>
@@ -154,37 +175,109 @@ export default function FriendsScreen() {
         }}
         renderSectionHeader={({ section: { title, data } }) => (
           <View style={s.sectionHeader}>
-            <Text style={s.sectionTitle}>{title} ({data.length})</Text>
+            <Text style={s.sectionTitle}>{title}</Text>
+            <View style={s.sectionBadge}>
+              <Text style={s.sectionBadgeText}>{data.length}</Text>
+            </View>
           </View>
         )}
         contentContainerStyle={s.list}
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={null}
       />
     </ScreenWrapper>
   );
 }
 
 const s = StyleSheet.create({
-  center: { justifyContent: 'center', alignItems: 'center' },
-  header: { marginTop: 10, marginBottom: 20, paddingHorizontal: 16 },
-  title: { fontSize: 28, fontWeight: '900', color: C.accentGlow, letterSpacing: 1, marginBottom: 20 },
-  searchContainer: { flexDirection: 'row', gap: 10 },
-  searchInput: { flex: 1, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 12, color: C.textPrimary, letterSpacing: 2 },
-  searchBtn: { backgroundColor: C.accent, borderRadius: 12, paddingHorizontal: 20, justifyContent: 'center' },
-  searchBtnText: { color: '#fff', fontWeight: '800' },
-  list: { paddingHorizontal: 16, paddingBottom: 20 },
-  sectionHeader: { marginTop: 24, marginBottom: 12 },
-  sectionTitle: { fontSize: 12, fontWeight: '800', color: C.textSecondary, letterSpacing: 2 },
-  item: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: 16, padding: 16, marginBottom: 8, borderWidth: 1, borderColor: C.border },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.bg },
+
+  header: {
+    paddingHorizontal: Spacing.md,
+    marginTop: Spacing.sm, marginBottom: Spacing.md,
+  },
+  eyebrow: {
+    fontSize: 10, fontWeight: '900', color: Colors.neonPurple,
+    letterSpacing: 3, marginBottom: 6,
+    ...textGlow(Colors.neonPurple),
+  },
+  title: {
+    fontSize: 30, fontWeight: '900', color: Colors.textPrimary,
+    marginBottom: Spacing.md,
+    ...textGlow(Colors.neonPurple),
+  },
+
+  // Search
+  searchRow: { flexDirection: 'row', gap: Spacing.sm },
+  searchInput: {
+    flex: 1, backgroundColor: Colors.card, borderRadius: 14,
+    borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: Spacing.md, paddingVertical: 12,
+    color: Colors.textPrimary, fontSize: 15, letterSpacing: 2,
+  },
+  searchBtn: {
+    backgroundColor: Colors.neonPurple, borderRadius: 14,
+    paddingHorizontal: Spacing.lg, justifyContent: 'center', alignItems: 'center',
+    ...(glow(Colors.neonPurple, 8) as any),
+  },
+  searchBtnText: { color: '#FFF', fontWeight: '900', fontSize: 12, letterSpacing: 1.5 },
+
+  // List
+  list: { paddingHorizontal: Spacing.md, paddingBottom: 100 },
+  sectionHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginTop: Spacing.lg, marginBottom: Spacing.sm,
+  },
+  sectionTitle: {
+    fontSize: 10, fontWeight: '900', color: Colors.textSecondary, letterSpacing: 2,
+  },
+  sectionBadge: {
+    backgroundColor: Colors.border, borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 2,
+  },
+  sectionBadgeText: { fontSize: 10, fontWeight: '900', color: Colors.textSecondary },
+
+  // Items
+  item: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.card, borderRadius: 16,
+    padding: Spacing.md, marginBottom: 8,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  requestItem: {
+    borderColor: Colors.neonYellow + '55',
+    ...(glow(Colors.neonYellow, 5) as any),
+  },
+  matchInviteItem: {
+    borderColor: Colors.neonPink + '88', borderWidth: 1.5,
+    ...(glow(Colors.neonPink, 8) as any),
+  },
+
   statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12 },
   info: { flex: 1 },
-  nameText: { fontSize: 16, fontWeight: '700', color: C.textPrimary },
-  statusText: { fontSize: 10, fontWeight: '800', color: C.textSecondary, marginTop: 2, letterSpacing: 1 },
-  inviteBtn: { backgroundColor: C.border, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
-  inviteBtnText: { color: C.accentGlow, fontSize: 12, fontWeight: '800' },
-  actions: { flexDirection: 'row', gap: 8 },
-  actionBtn: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
-  acceptBtn: { backgroundColor: C.success },
-  rejectBtn: { backgroundColor: C.danger },
-  actionBtnText: { color: '#fff', fontSize: 18, fontWeight: '900' },
+  nameText: { fontSize: 15, fontWeight: '800', color: Colors.textPrimary },
+  statusText: { fontSize: 9, fontWeight: '900', color: Colors.textSecondary, marginTop: 3, letterSpacing: 1 },
+
+  inviteBtn: {
+    backgroundColor: Colors.neonPurple + '22',
+    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8,
+    borderWidth: 1, borderColor: Colors.neonPurple + '66',
+  },
+  inviteBtnText: { color: Colors.neonPurple, fontSize: 11, fontWeight: '900', letterSpacing: 0.5 },
+
+  actions: { flexDirection: 'row', gap: Spacing.sm },
+  actionBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  acceptBtn: {
+    backgroundColor: Colors.neonGreen + '22',
+    borderWidth: 1, borderColor: Colors.neonGreen + '66',
+    ...(glow(Colors.neonGreen, 4) as any),
+  },
+  rejectBtn: {
+    backgroundColor: Colors.lose + '22',
+    borderWidth: 1, borderColor: Colors.lose + '66',
+  },
+  actionBtnText: { color: Colors.textPrimary, fontSize: 16, fontWeight: '900' },
 });

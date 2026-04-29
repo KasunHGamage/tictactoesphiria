@@ -2,29 +2,21 @@ import React, { useState } from 'react';
 import ScreenWrapper from '../components/ScreenWrapper';
 import {
   StyleSheet, Text, View, Pressable,
-  StatusBar, useWindowDimensions, Alert
+  StatusBar, Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { 
-  FadeInDown
-} from 'react-native-reanimated';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '../auth/AuthContext';
 import { GameConfig, Difficulty } from '../game/gameTypes';
 import { createMatch } from '../services/matchService';
-
-const C = {
-  bg: '#0D0D1A', surface: '#14142B', card: '#1C1C3A', border: '#2A2A5A',
-  accent: '#7C5CFC', accentGlow: '#9B7DFF', accentDim: '#3D2E7C',
-  textPrimary: '#F0F0FF', textSecondary: '#8888AA',
-  success: '#4ADE80', warning: '#FBBF24',
-};
+import { Colors, Spacing, glow, glowStrong, textGlow } from '../../constants/theme';
 
 type Mode = 'ai' | 'friend';
 
 export default function GameSetupScreen({ navigation, route }: any) {
   const { user } = useAuth();
   const initialMode: Mode = route.params?.mode || 'ai';
-  
+
   const [mode, setMode] = useState<Mode>(initialMode);
   const [difficulty, setDifficulty] = useState<Difficulty>('auto');
   const [gridSize, setGridSize] = useState<number>(3);
@@ -32,7 +24,6 @@ export default function GameSetupScreen({ navigation, route }: any) {
   const [maxPieces, setMaxPieces] = useState<number>(3);
   const [loading, setLoading] = useState(false);
 
-  // Update winLength and maxPieces when gridSize changes to keep them valid
   const updateGridSize = (val: number) => {
     setGridSize(val);
     setWinLength(val);
@@ -56,14 +47,31 @@ export default function GameSetupScreen({ navigation, route }: any) {
     }
   };
 
-  const renderOption = (label: string, value: any, current: any, setter: (v: any) => void) => {
-    const isSelected = current === value;
+  // ── Option Chip ───────────────────────────────────────────────────
+  const renderOption = (
+    label: string, value: any, current: any, setter: (v: any) => void,
+    accentColor = Colors.neonPurple,
+  ) => {
+    const selected = current === value;
     return (
-      <Pressable 
+      <Pressable
+        key={label}
         onPress={() => setter(value)}
-        style={[s.option, isSelected && s.optionSelected]}
+        style={[
+          s.chip,
+          selected && {
+            backgroundColor: '#0E0E18',
+            borderColor: accentColor,
+            shadowColor: accentColor,
+            shadowOpacity: 0.55,
+            shadowRadius: 10,
+            elevation: 6,
+          },
+        ]}
       >
-        <Text style={[s.optionText, isSelected && s.optionTextSelected]}>{label}</Text>
+        <Text style={[s.chipText, selected && { color: accentColor, fontWeight: '700', letterSpacing: 0.5 }]}>
+          {label}
+        </Text>
       </Pressable>
     );
   };
@@ -71,105 +79,132 @@ export default function GameSetupScreen({ navigation, route }: any) {
   return (
     <ScreenWrapper horizontalPadding={0}>
       <StatusBar barStyle="light-content" />
+
+      {/* Header */}
       <View style={s.header}>
         <Pressable onPress={() => navigation.goBack()} style={s.backBtn}>
-          <Ionicons name="chevron-back" size={24} color={C.textPrimary} />
+          <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />
         </Pressable>
-        <Text style={s.headerTitle}>Game Setup</Text>
+        <Text style={[s.headerTitle, textGlow(Colors.neonPurple) as any]}>GAME SETUP</Text>
         <View style={{ width: 44 }} />
       </View>
 
       <View style={s.content}>
-        {/* Mode Selection */}
-        <Animated.View entering={FadeInDown.delay(100)} style={s.section}>
+        {/* ── Mode Selection ── */}
+        <Animated.View entering={FadeInDown.delay(80)} style={s.section}>
           <Text style={s.sectionTitle}>PLAY MODE</Text>
           <View style={s.modeRow}>
-            <Pressable 
+            {/* VS AI */}
+            <Pressable
               onPress={() => setMode('ai')}
-              style={[s.modeBtn, mode === 'ai' && s.modeBtnSelected]}
+              style={[s.modeBtn, mode === 'ai' && s.modeBtnActiveAI]}
             >
-              <Ionicons name="desktop-outline" size={24} color={mode === 'ai' ? '#FFF' : C.textSecondary} />
-              <Text style={[s.modeBtnText, mode === 'ai' && s.modeBtnTextSelected]}>VS AI</Text>
+              <Ionicons
+                name="desktop-outline" size={22}
+                color={mode === 'ai' ? Colors.neonBlue : Colors.textSecondary}
+              />
+              <Text style={[s.modeBtnText, mode === 'ai' && { color: Colors.neonBlue }]}>
+                VS AI
+              </Text>
             </Pressable>
-            <Pressable 
+            {/* Friend */}
+            <Pressable
               onPress={() => setMode('friend')}
-              style={[s.modeBtn, mode === 'friend' && s.modeBtnSelected]}
+              style={[s.modeBtn, mode === 'friend' && s.modeBtnActiveFriend]}
             >
-              <Ionicons name="people-outline" size={24} color={mode === 'friend' ? '#FFF' : C.textSecondary} />
-              <Text style={[s.modeBtnText, mode === 'friend' && s.modeBtnTextSelected]}>WITH FRIEND</Text>
+              <Ionicons
+                name="people-outline" size={22}
+                color={mode === 'friend' ? Colors.neonPurple : Colors.textSecondary}
+              />
+              <Text style={[s.modeBtnText, mode === 'friend' && { color: Colors.neonPurple }]}>
+                WITH FRIEND
+              </Text>
             </Pressable>
           </View>
         </Animated.View>
 
-        {/* Difficulty Selection (AI Only) */}
+        {/* ── Difficulty (AI only) ── */}
         {mode === 'ai' && (
-          <Animated.View entering={FadeInDown.delay(200)} style={s.section}>
+          <Animated.View entering={FadeInDown.delay(160)} style={s.section}>
             <Text style={s.sectionTitle}>DIFFICULTY</Text>
-            <View style={s.optionsGrid}>
-              {renderOption('Auto', 'auto', difficulty, setDifficulty)}
-              {renderOption('Easy', 'easy', difficulty, setDifficulty)}
-              {renderOption('Medium', 'medium', difficulty, setDifficulty)}
-              {renderOption('Hard', 'hard', difficulty, setDifficulty)}
+            <View style={s.chipRow}>
+              {renderOption('Auto',   'auto',   difficulty, setDifficulty, Colors.neonPurple)}
+              {renderOption('Easy',   'easy',   difficulty, setDifficulty, Colors.neonGreen)}
+              {renderOption('Medium', 'medium', difficulty, setDifficulty, Colors.neonYellow)}
+              {renderOption('Hard',   'hard',   difficulty, setDifficulty, Colors.neonPink)}
             </View>
             <Text style={s.hint}>
-              {difficulty === 'auto' ? 'AI scales with your player level automatically.' : `Fixed ${difficulty} challenge.`}
+              {difficulty === 'auto'
+                ? 'AI scales with your player level automatically.'
+                : `Fixed ${difficulty} challenge.`}
             </Text>
           </Animated.View>
         )}
 
-        {/* Grid Size Selection */}
-        <Animated.View entering={FadeInDown.delay(300)} style={s.section}>
+        {/* ── Grid Size ── */}
+        <Animated.View entering={FadeInDown.delay(240)} style={s.section}>
           <Text style={s.sectionTitle}>GRID SIZE</Text>
-          <View style={s.optionsGrid}>
-            {renderOption('3x3', 3, gridSize, updateGridSize)}
-            {renderOption('4x4', 4, gridSize, updateGridSize)}
-            {renderOption('5x5', 5, gridSize, updateGridSize)}
+          <View style={s.chipRow}>
+            {renderOption('3×3', 3, gridSize, updateGridSize, Colors.neonBlue)}
+            {renderOption('4×4', 4, gridSize, updateGridSize, Colors.neonBlue)}
+            {renderOption('5×5', 5, gridSize, updateGridSize, Colors.neonBlue)}
           </View>
         </Animated.View>
 
-        {/* Win Condition Selection */}
+        {/* ── Win Condition ── */}
         {gridSize > 3 && (
-          <Animated.View entering={FadeInDown.delay(350)} style={s.section}>
+          <Animated.View entering={FadeInDown.delay(300)} style={s.section}>
             <Text style={s.sectionTitle}>WIN CONDITION</Text>
-            <View style={s.optionsGrid}>
-              {gridSize >= 4 && renderOption('4 in a row', 4, winLength, setWinLength)}
-              {gridSize >= 5 && renderOption('5 in a row', 5, winLength, setWinLength)}
+            <View style={s.chipRow}>
+              {gridSize >= 4 && renderOption('4 in a row', 4, winLength, setWinLength, Colors.neonYellow)}
+              {gridSize >= 5 && renderOption('5 in a row', 5, winLength, setWinLength, Colors.neonYellow)}
             </View>
           </Animated.View>
         )}
 
-        {/* Pieces Selection */}
-        <Animated.View entering={FadeInDown.delay(400)} style={s.section}>
+        {/* ── Pieces ── */}
+        <Animated.View entering={FadeInDown.delay(360)} style={s.section}>
           <Text style={s.sectionTitle}>PIECES PER PLAYER</Text>
-          <View style={s.optionsGrid}>
-            {renderOption('3', 3, maxPieces, setMaxPieces)}
-            {gridSize >= 4 && renderOption('4', 4, maxPieces, setMaxPieces)}
-            {gridSize >= 5 && renderOption('5', 5, maxPieces, setMaxPieces)}
+          <View style={s.chipRow}>
+            {renderOption('3', 3, maxPieces, setMaxPieces, Colors.neonPink)}
+            {gridSize >= 4 && renderOption('4', 4, maxPieces, setMaxPieces, Colors.neonPink)}
+            {gridSize >= 5 && renderOption('5', 5, maxPieces, setMaxPieces, Colors.neonPink)}
           </View>
           {maxPieces > gridSize && (
             <Text style={s.errorHint}>Pieces should be ≤ Grid Size for optimal balance.</Text>
           )}
         </Animated.View>
 
-        {/* Summary Card */}
-        <Animated.View entering={FadeInDown.delay(500)} style={s.summaryCard}>
+        {/* ── Summary Card ── */}
+        <Animated.View entering={FadeInDown.delay(440)} style={s.summaryCard}>
           <View style={s.summaryRow}>
             <View style={s.summaryItem}>
-              <Text style={s.summaryLabel}>Rules</Text>
-              <Text style={s.summaryValue}>{winLength} in a row to win</Text>
+              <Text style={s.summaryLabel}>GRID</Text>
+              <Text style={s.summaryVal}>{gridSize}×{gridSize}</Text>
             </View>
+            <View style={s.summaryDivider} />
             <View style={s.summaryItem}>
-              <Text style={s.summaryLabel}>Pieces</Text>
-              <Text style={s.summaryValue}>{maxPieces} moving pieces</Text>
+              <Text style={s.summaryLabel}>WIN</Text>
+              <Text style={s.summaryVal}>{winLength} in a row</Text>
+            </View>
+            <View style={s.summaryDivider} />
+            <View style={s.summaryItem}>
+              <Text style={s.summaryLabel}>PIECES</Text>
+              <Text style={s.summaryVal}>{maxPieces} each</Text>
             </View>
           </View>
         </Animated.View>
 
+        {/* ── Start Button ── */}
         <View style={s.footer}>
-          <Pressable 
-            onPress={handleStart} 
+          <Pressable
+            onPress={handleStart}
             disabled={loading}
-            style={({ pressed }) => [s.startBtn, pressed && s.startBtnPressed, loading && { opacity: 0.7 }]}
+            style={({ pressed }) => [
+              s.startBtn,
+              pressed && { transform: [{ scale: 0.97 }], opacity: 0.9 },
+              loading && { opacity: 0.6 },
+            ]}
           >
             <Text style={s.startBtnText}>{loading ? 'CREATING...' : 'START GAME'}</Text>
             <Ionicons name="play" size={20} color="#FFF" />
@@ -181,51 +216,82 @@ export default function GameSetupScreen({ navigation, route }: any) {
 }
 
 const s = StyleSheet.create({
-  header: { 
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', 
-    paddingHorizontal: 16, marginTop: 10, marginBottom: 20
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md, marginTop: Spacing.sm, marginBottom: Spacing.md,
   },
-  backBtn: { 
-    width: 44, height: 44, borderRadius: 22, backgroundColor: C.card, 
-    justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: C.border 
+  backBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: Colors.card, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.border,
   },
-  headerTitle: { fontSize: 20, fontWeight: '900', color: C.textPrimary, letterSpacing: 1 },
-  content: { marginTop: 20, paddingHorizontal: 16, gap: 20 },
-  section: { marginBottom: 12 },
-  sectionTitle: { fontSize: 12, fontWeight: '900', color: C.accentGlow, letterSpacing: 2, marginBottom: 16 },
-  modeRow: { flexDirection: 'row', gap: 12 },
-  modeBtn: { 
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', 
-    backgroundColor: C.card, borderRadius: 16, paddingVertical: 16, gap: 10,
-    borderWidth: 1, borderColor: C.border
+  headerTitle: {
+    fontSize: 16, fontWeight: '900', color: Colors.textPrimary, letterSpacing: 2,
   },
-  modeBtnSelected: { backgroundColor: C.accent, borderColor: C.accentGlow },
-  modeBtnText: { color: C.textSecondary, fontWeight: '800', fontSize: 14 },
-  modeBtnTextSelected: { color: '#FFF' },
-  optionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  option: { 
-    paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, 
-    backgroundColor: C.card, borderWidth: 1, borderColor: C.border, minWidth: 80, alignItems: 'center'
+
+  content: { paddingHorizontal: Spacing.md, gap: Spacing.lg },
+
+  section: {},
+  sectionTitle: {
+    fontSize: 10, fontWeight: '900', color: Colors.textSecondary,
+    letterSpacing: 3, marginBottom: Spacing.md,
   },
-  optionSelected: { backgroundColor: C.accentDim, borderColor: C.accent },
-  optionText: { color: C.textSecondary, fontWeight: '700', fontSize: 14 },
-  optionTextSelected: { color: C.accentGlow },
-  hint: { fontSize: 12, color: C.textSecondary, marginTop: 12, fontStyle: 'italic' },
-  errorHint: { fontSize: 12, color: '#FF6B6B', marginTop: 10, fontWeight: '600' },
-  summaryCard: { 
-    backgroundColor: C.surface, borderRadius: 24, padding: 20, 
-    borderWidth: 1, borderColor: C.border, borderStyle: 'dashed' 
+
+  // Mode buttons
+  modeRow: { flexDirection: 'row', gap: Spacing.sm },
+  modeBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: Colors.card, borderRadius: 14, paddingVertical: 16, gap: 10,
+    borderWidth: 1, borderColor: Colors.border,
   },
-  summaryRow: { flexDirection: 'row', justifyContent: 'space-around' },
+  modeBtnActiveAI: {
+    backgroundColor: '#0E0E18',
+    borderColor: Colors.neonBlue,
+    shadowColor: Colors.neonBlue,
+    shadowOpacity: 0.55,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  modeBtnActiveFriend: {
+    backgroundColor: '#0E0E18',
+    borderColor: Colors.neonPurple,
+    shadowColor: Colors.neonPurple,
+    shadowOpacity: 0.55,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  modeBtnText: { color: Colors.textSecondary, fontWeight: '700', fontSize: 13, letterSpacing: 0.3 },
+
+  // Chips
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  chip: {
+    paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12,
+    backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border,
+    minWidth: 72, alignItems: 'center',
+  },
+  chipText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
+
+  hint: { fontSize: 12, color: Colors.textSecondary, marginTop: 10, fontStyle: 'italic' },
+  errorHint: { fontSize: 12, color: Colors.neonPink, marginTop: 8, fontWeight: '700' },
+
+  // Summary
+  summaryCard: {
+    backgroundColor: '#0E0E18', borderRadius: 20, padding: Spacing.lg,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
   summaryItem: { alignItems: 'center' },
-  summaryLabel: { fontSize: 11, color: C.textSecondary, marginBottom: 4, fontWeight: '600' },
-  summaryValue: { fontSize: 14, color: C.textPrimary, fontWeight: '800' },
-  footer: { marginTop: 20, marginBottom: 40 },
-  startBtn: { 
-    backgroundColor: C.accent, borderRadius: 20, height: 64, 
+  summaryDivider: { width: 1, height: 32, backgroundColor: Colors.border },
+  summaryLabel: { fontSize: 9, color: Colors.textSecondary, fontWeight: '900', letterSpacing: 2, marginBottom: 6 },
+  summaryVal: { fontSize: 14, color: Colors.textPrimary, fontWeight: '900' },
+
+  // Start button — strongest CTA, intentionally brighter than chip selections
+  footer: { marginTop: Spacing.sm, marginBottom: 40 },
+  startBtn: {
+    backgroundColor: Colors.neonPurple, borderRadius: 16, height: 64,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12,
-    shadowColor: C.accent, shadowOpacity: 0.4, shadowRadius: 15, elevation: 8
+    borderWidth: 1.5, borderColor: '#C47FFF',
+    shadowColor: Colors.neonPurple, shadowOpacity: 0.85, shadowRadius: 20, elevation: 16,
   },
-  startBtnPressed: { transform: [{ scale: 0.98 }], opacity: 0.9 },
-  startBtnText: { color: '#FFF', fontSize: 18, fontWeight: '900', letterSpacing: 1.5 },
+  startBtnText: { color: '#FFF', fontSize: 17, fontWeight: '900', letterSpacing: 2 },
 });

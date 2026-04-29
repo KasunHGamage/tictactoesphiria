@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, StyleSheet, Platform, ScrollView } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, StyleSheet, ScrollView } from 'react-native';
+import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
+import { Colors, Spacing } from '../../constants/theme';
 
 interface ScreenWrapperProps {
   children: React.ReactNode;
@@ -9,45 +10,39 @@ interface ScreenWrapperProps {
   horizontalPadding?: number;
 }
 
-const ScreenWrapper: React.FC<ScreenWrapperProps> = ({ 
-  children, 
-  scroll = true, 
-  backgroundColor = '#0D0D1A',
-  horizontalPadding = 16 
+const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
+  children,
+  scroll = true,
+  backgroundColor = Colors.bg,
+  horizontalPadding = Spacing.md,
 }) => {
   const insets = useSafeAreaInsets();
 
   const containerStyle = [
     styles.container,
-    { 
-      backgroundColor,
-      paddingTop: Platform.OS === 'android' ? insets.top : 0,
-    }
+    { backgroundColor },
   ];
 
-  const contentStyle = [
-    styles.content,
-    { paddingHorizontal: horizontalPadding }
-  ];
+  const contentStyle = [styles.content, { paddingHorizontal: horizontalPadding }];
 
   if (scroll) {
     return (
-      <View style={containerStyle}>
-        <ScrollView 
+      <SafeAreaView edges={['top', 'left', 'right']} style={containerStyle}>
+        <ScrollView
           contentContainerStyle={[contentStyle, { paddingBottom: insets.bottom + 80 }]}
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
           {children}
         </ScrollView>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={[containerStyle, contentStyle, { paddingBottom: insets.bottom + 80 }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[containerStyle, contentStyle, { paddingBottom: insets.bottom + 80 }]}>
       {children}
-    </View>
+    </SafeAreaView>
   );
 };
 

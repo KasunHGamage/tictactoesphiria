@@ -53,27 +53,29 @@ function MainTabs() {
 
           return <Ionicons name={iconName} size={24} color={color} />;
         },
-        tabBarActiveTintColor: '#7C5CFC',
-        tabBarInactiveTintColor: '#6B7280',
+        tabBarActiveTintColor: '#9D4EDD',
+        tabBarInactiveTintColor: '#3A3A5C',
         tabBarStyle: {
-          backgroundColor: '#0B0F1A',
-          borderTopWidth: 0,
+          backgroundColor: '#0A0A14',
+          borderTopWidth: 1,
+          borderTopColor: '#2B2B44',
           height: 70,
           paddingBottom: 12,
-          paddingTop: 12,
-          borderTopLeftRadius: 24,
-          borderTopRightRadius: 24,
+          paddingTop: 10,
+          borderTopLeftRadius: 28,
+          borderTopRightRadius: 28,
           position: 'absolute',
           elevation: 0,
-          shadowColor: '#000',
+          shadowColor: '#9D4EDD',
           shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.2,
-          shadowRadius: 10,
+          shadowOpacity: 0.25,
+          shadowRadius: 18,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
-          marginTop: 4,
+          fontSize: 10,
+          fontWeight: '800',
+          marginTop: 2,
+          letterSpacing: 0.5,
         },
       })}
     >
@@ -114,8 +116,8 @@ export default function RootNavigator() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0D0D1A', justifyContent: 'center' }}>
-        <ActivityIndicator color="#7C5CFC" size="large" />
+      <View style={{ flex: 1, backgroundColor: '#07070D', justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator color="#9D4EDD" size="large" />
       </View>
     );
   }

@@ -27,7 +27,7 @@ export function useMatch(matchId: string, myUid: string, playerSide: Player) {
     return unsub;
   }, [matchId]);
 
-  const myTurn = match?.currentPlayer === playerSide && match.status === 'active';
+  const myTurn = match?.currentPlayer === playerSide && match.status === 'playing';
 
   const performMove = useCallback(async (payload: MovePayload) => {
     if (!match || !myTurn) return;
