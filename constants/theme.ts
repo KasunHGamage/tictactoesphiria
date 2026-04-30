@@ -1,18 +1,25 @@
 /**
- * Retro Neon Arcade Design System
- * Premium dark base + electric neon accents
+ * constants/theme.ts — Backwards-Compatibility Shim
+ *
+ * Screens that haven't been migrated to useAppTheme() still import
+ * Colors / glow / textGlow from here. This shim maps the OLD property
+ * names (Colors.neonPurple, etc.) back to arcade-theme values so those
+ * screens keep compiling and rendering in Arcade style.
+ *
+ * New / migrated code imports from 'constants/themes' and calls useAppTheme().
  */
 
-import { Platform } from 'react-native';
+// ── Re-export shared layout tokens ────────────────────────────────
+export { Typography, Spacing } from './themes';
 
-// ── Color Palette ──────────────────────────────────────────────────
+// ── Legacy Colors object (matches the original shape exactly) ─────
 export const Colors = {
   // Base
   bg:     '#07070D',
   card:   '#11111A',
   border: '#2B2B44',
 
-  // Primary
+  // Neon accents
   neonPurple: '#9D4EDD',
   neonPink:   '#FF2D9B',
   neonBlue:   '#00E5FF',
@@ -27,31 +34,12 @@ export const Colors = {
   win:  '#39FF14',
   lose: '#FF3355',
 
-  // Aliases used across codebase
+  // Aliases
   success:    '#39FF14',
   accentGlow: '#BF7FFF',
 } as const;
 
-// ── Spacing ─────────────────────────────────────────────────────────
-export const Spacing = {
-  xs: 8,
-  sm: 12,
-  md: 16,
-  lg: 20,
-  xl: 28,
-} as const;
-
-// ── Typography ───────────────────────────────────────────────────────
-export const Typography = {
-  fontFamily: Platform.select({
-    ios: 'Orbitron', android: 'Orbitron', default: 'Orbitron',
-  }) as string,
-  titleSize: 32,
-  labelSize: 12,
-  bodySize:  16,
-} as const;
-
-// ── Glow Helpers ─────────────────────────────────────────────────────
+// ── Legacy glow helpers (Arcade-only; no-ops are handled in theme) ─
 export const glow = (color: string, radius = 14) => ({
   shadowColor:   color,
   shadowOffset:  { width: 0, height: 0 },
@@ -63,11 +51,10 @@ export const glow = (color: string, radius = 14) => ({
 export const glowStrong = (color: string) => glow(color, 24);
 export const glowSubtle = (color: string) => glow(color, 8);
 
-// ── Text glow (textShadow for headings) ────────────────────────────
 export const textGlow = (color: string) => ({
   textShadowColor:  color,
   textShadowOffset: { width: 0, height: 0 },
   textShadowRadius: 12,
 });
 
-export default { Colors, Spacing, Typography, glow, glowStrong, glowSubtle, textGlow };
+export default { Colors, glow, glowStrong, glowSubtle, textGlow };

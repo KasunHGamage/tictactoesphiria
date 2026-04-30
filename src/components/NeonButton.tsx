@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, Text, StyleSheet, View } from 'react-native';
-import { Colors, Spacing, Typography, glow } from '../../constants/theme';
+import { useAppTheme } from '../context/ThemeContext';
+import { Spacing, Typography } from '../../constants/themes';
 
 interface Props {
   title: string;
@@ -14,15 +15,22 @@ interface Props {
 const NeonButton: React.FC<Props> = ({
   title, onPress, variant = 'primary', disabled, style, small,
 }) => {
-  const borderColor =
-    variant === 'primary'   ? Colors.neonPurple :
-    variant === 'secondary' ? Colors.neonBlue :
-    Colors.lose;
+  const t = useAppTheme();
 
-  const bgColor =
-    variant === 'primary'   ? Colors.neonPurple :
-    variant === 'secondary' ? 'transparent' :
-    '#1A0010';
+  const isCalm = t.mode === 'calm';
+
+  const borderColor =
+    variant === 'primary'   ? t.primary :
+    variant === 'secondary' ? t.secondary :
+    t.accent;
+
+  const bgColor = isCalm
+    ? (variant === 'primary' ? t.primary : variant === 'secondary' ? t.secondary : t.accent)
+    : (variant === 'primary' ? t.primary : variant === 'secondary' ? 'transparent' : '#1A0010');
+
+  const textColor = isCalm
+    ? t.textOnPrimary // in calm mode, all buttons are solid, so text should be white
+    : (variant === 'secondary' ? t.secondary : variant === 'danger' ? t.accent : t.textOnPrimary);
 
   return (
     <Pressable
@@ -30,23 +38,18 @@ const NeonButton: React.FC<Props> = ({
       disabled={disabled}
       style={({ pressed }) => [
         styles.base,
-        small && styles.small,
         { backgroundColor: bgColor, borderColor },
-        pressed && [styles.pressed, { ...(glow(borderColor, 20) as any) }],
+        t.glow(borderColor, 10) as any,
+        pressed && [styles.pressed, { ...(t.glow(borderColor, 20) as any) }],
         disabled && styles.disabled,
         style,
       ]}
     >
-      {/* Top shine strip */}
-      <View style={styles.shine} pointerEvents="none" />
-      <Text
-        style={[
-          styles.text,
-          small && styles.textSmall,
-          variant === 'secondary' && { color: Colors.neonBlue },
-          variant === 'danger'    && { color: Colors.lose },
-        ]}
-      >
+      {/* Top shine strip — arcade only */}
+      {t.mode === 'arcade' && (
+        <View style={styles.shine} pointerEvents="none" />
+      )}
+      <Text style={[styles.text, small && styles.textSmall, { color: textColor }]}>
         {title}
       </Text>
     </Pressable>
@@ -62,12 +65,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    ...glow(Colors.neonPurple, 10),
-  },
-  small: {
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    borderRadius: 10,
   },
   shine: {
     position: 'absolute',
@@ -83,7 +80,6 @@ const styles = StyleSheet.create({
   },
   disabled: { opacity: 0.4 },
   text: {
-    color: Colors.textPrimary,
     fontSize: 15,
     fontWeight: '900',
     fontFamily: Typography.fontFamily,

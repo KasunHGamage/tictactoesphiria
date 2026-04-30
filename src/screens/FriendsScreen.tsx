@@ -1,40 +1,65 @@
 import React, { useEffect, useState } from 'react';
-import ScreenWrapper from '../components/ScreenWrapper';
+import ScreenWrapper from '../components/ScreenWrapper'; // Re-save to fix undefined import
 import {
   StyleSheet, Text, View, ActivityIndicator,
-  TextInput, Pressable, Alert, SectionList
+  TextInput, Pressable, Alert, SectionList,
+  Platform,
 } from 'react-native';
-import { Colors, Spacing, glow, textGlow } from '../../constants/theme';
+import * as Clipboard from 'expo-clipboard';
+import { Spacing } from '../../constants/themes';
+import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../auth/AuthContext';
 import { getUserByGameId, getUserProfile, UserProfile } from '../services/userService';
 import {
-  sendFriendRequest, acceptFriendRequest, rejectFriendRequest,
-  listenToRequests, listenToFriends
+  sendFriendRequest, acceptFriendRequest, rejectFriendRequest, removeFriend,
+  listenToRequests, watchSentRequests, listenToFriends,
 } from '../services/friendsService';
-import { useMatchInvitations } from '../hooks/useMatchInvitations';
 import { MatchInvite } from '../services/matchTypes';
+import { useMatchInvitations } from '../hooks/useMatchInvitations';
+import { onSnapshot, doc } from 'firebase/firestore';
+import { db } from '../services/firebase';
 
 export default function FriendsScreen({ route }: any) {
-  const { user } = useAuth();
+  const { user }    = useAuth();
+  const t           = useAppTheme();
   const pendingMatchId: string | undefined = route?.params?.pendingMatchId;
-  const [searchId, setSearchId] = useState('');
-  const [searching, setSearching] = useState(false);
-  const [friends, setFriends] = useState<UserProfile[]>([]);
+
+  const [searchId,       setSearchId]       = useState('');
+  const [searching,      setSearching]      = useState(false);
+  const [friendUids,     setFriendUids]     = useState<string[]>([]);
+  const [friendsMap,     setFriendsMap]     = useState<Record<string, UserProfile>>({});
   const [friendRequests, setFriendRequests] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [sentRequests,   setSentRequests]   = useState<any[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [myProfile,      setMyProfile]      = useState<UserProfile | null>(null);
+  const [showSearch,     setShowSearch]     = useState(false);
 
   const { incoming: matchInvites, inviteFriend, accept, reject } = useMatchInvitations(() => {});
 
   useEffect(() => {
     if (!user) return;
-    const unsubReqs = listenToRequests(user.uid, setFriendRequests);
-    const unsubFriends = listenToFriends(user.uid, async (uids) => {
-      const profiles = await Promise.all(uids.map(uid => getUserProfile(uid)));
-      setFriends(profiles.filter(p => p !== null) as UserProfile[]);
+    getUserProfile(user.uid).then(setMyProfile);
+    const unsubReqs    = listenToRequests(user.uid, setFriendRequests);
+    const unsubSent    = watchSentRequests(user.uid, setSentRequests);
+    const unsubFriends = listenToFriends(user.uid, (uids) => {
+      setFriendUids(uids);
       setLoading(false);
     });
-    return () => { unsubReqs(); unsubFriends(); };
+    return () => { unsubReqs(); unsubSent(); unsubFriends(); };
   }, [user]);
+
+  useEffect(() => {
+    const unsubs = friendUids.map(uid =>
+      onSnapshot(doc(db, 'users', uid), (snap) => {
+        if (snap.exists()) {
+          setFriendsMap(prev => ({ ...prev, [uid]: snap.data() as UserProfile }));
+        }
+      })
+    );
+    return () => unsubs.forEach(unsub => unsub());
+  }, [friendUids]);
+
+  const friends = Object.values(friendsMap).filter(Boolean);
 
   const handleSearch = async () => {
     if (searchId.length !== 6) return;
@@ -48,240 +73,296 @@ export default function FriendsScreen({ route }: any) {
       } else {
         Alert.alert('Add Friend', `Send friend request to ${target.displayName}?`, [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Send', onPress: () => sendFriendRequest(user!.uid, user!.displayName!, target.uid) },
+          { text: 'Send', onPress: () => sendFriendRequest(user!.uid, user!.displayName!, target.uid, target.displayName) },
         ]);
       }
-    } finally {
-      setSearching(false);
-      setSearchId('');
-    }
+    } finally { setSearching(false); setSearchId(''); }
   };
 
-  // ── Render Helpers ────────────────────────────────────────────────
+  // ── Status helpers ───────────────────────────────────────────────
+  const isOnline = (lastSeen?: number) => {
+    if (!lastSeen) return false;
+    return Date.now() - lastSeen < 15000;
+  };
 
-  const statusColor = (status: string) =>
-    status === 'online' ? Colors.neonGreen :
-    status === 'in-match' ? Colors.neonBlue :
-    Colors.textSecondary;
+  const formatLastSeen = (lastSeen?: number) => {
+    if (!lastSeen) return 'OFFLINE';
+    const diff = Date.now() - lastSeen;
+    if (diff < 15000) return 'ONLINE';
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `LAST SEEN ${mins}M AGO`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `LAST SEEN ${hours}H AGO`;
+    const days = Math.floor(hours / 24);
+    return `LAST SEEN ${days}D AGO`;
+  };
 
-  const renderFriend = ({ item }: { item: UserProfile }) => (
-    <View style={s.item}>
-      <View style={[s.statusDot, { backgroundColor: statusColor(item.status) }]} />
-      <View style={s.info}>
-        <Text style={s.nameText}>{item.displayName}</Text>
-        <Text style={[s.statusText, { color: statusColor(item.status) }]}>
-          {item.status.toUpperCase()}
-        </Text>
-      </View>
-      <Pressable
-        style={({ pressed }) => [s.inviteBtn, pressed && { opacity: 0.75 }]}
-        onPress={() => {
-          const matchId = pendingMatchId || undefined;
-          inviteFriend(item.uid, matchId)
-            .then(() => Alert.alert('Sent', 'Match invitation sent!'))
-            .catch(() => Alert.alert('Error', 'Failed to send invite'));
-        }}
+  // ── Render helpers ───────────────────────────────────────────────
+  const handleRemoveFriend = (friendId: string, friendName: string) => {
+    Alert.alert(
+      'Remove Friend',
+      `Are you sure you want to remove ${friendName} from your friends list?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => removeFriend(user!.uid, friendId) },
+      ]
+    );
+  };
+
+  const renderFriend = ({ item }: { item: UserProfile }) => {
+    const online = isOnline(item.lastSeen);
+    const statusText = formatLastSeen(item.lastSeen);
+    const sColor = online ? t.success : t.textSecondary;
+
+    return (
+      <Pressable 
+        style={({ pressed }) => [
+          s.item, 
+          { backgroundColor: t.card, borderColor: t.border },
+          pressed && { opacity: 0.7 }
+        ]}
+        onLongPress={() => handleRemoveFriend(item.uid, item.displayName)}
+        delayLongPress={500}
       >
-        <Text style={s.inviteBtnText}>INVITE ⚔️</Text>
+        <View style={[s.statusDot, { backgroundColor: sColor }]} />
+        <View style={s.info}>
+          <Text style={[s.nameText,   { color: t.textPrimary }]}>{item.displayName}</Text>
+          <Text style={[s.statusText, { color: sColor }]}>
+            {statusText}
+          </Text>
+        </View>
       </Pressable>
+    );
+  };
+
+  const renderSentRequest = ({ item }: { item: any }) => (
+    <View style={[
+      s.item, s.requestItem,
+      { backgroundColor: t.card, borderColor: t.border },
+    ]}>
+      <View style={s.info}>
+        <Text style={[s.nameText, { color: t.textPrimary }]}>{item.toName || 'Unknown User'}</Text>
+        <Text style={[s.statusText, { color: t.textSecondary }]}>REQUEST SENT</Text>
+      </View>
+      <View style={s.actions}>
+        <Pressable
+          style={[s.actionBtn, { backgroundColor: t.lose + '22', borderColor: t.lose + '66' }]}
+          onPress={() => rejectFriendRequest(item.id)}
+        >
+          <Text style={[s.actionBtnText, { color: t.textPrimary }]}>✕</Text>
+        </Pressable>
+      </View>
     </View>
   );
 
   const renderFriendRequest = ({ item }: { item: any }) => (
-    <View style={[s.item, s.requestItem]}>
+    <View style={[
+      s.item, s.requestItem,
+      { backgroundColor: t.card, borderColor: t.warning + '55' },
+      t.glow(t.warning, 5) as any,
+    ]}>
       <View style={s.info}>
-        <Text style={s.nameText}>{item.fromName}</Text>
-        <Text style={[s.statusText, { color: Colors.neonYellow }]}>FRIEND REQUEST</Text>
+        <Text style={[s.nameText, { color: t.textPrimary }]}>{item.fromName}</Text>
+        <Text style={[s.statusText, { color: t.warning }]}>FRIEND REQUEST</Text>
       </View>
       <View style={s.actions}>
         <Pressable
-          style={[s.actionBtn, s.acceptBtn]}
+          style={[s.actionBtn, { backgroundColor: t.success + '22', borderColor: t.success + '66' }, t.glow(t.success, 4) as any]}
           onPress={() => acceptFriendRequest(item.id, item.from, user!.uid)}
         >
-          <Text style={s.actionBtnText}>✓</Text>
+          <Text style={[s.actionBtnText, { color: t.textPrimary }]}>✓</Text>
         </Pressable>
         <Pressable
-          style={[s.actionBtn, s.rejectBtn]}
+          style={[s.actionBtn, { backgroundColor: t.lose + '22', borderColor: t.lose + '66' }]}
           onPress={() => rejectFriendRequest(item.id)}
         >
-          <Text style={s.actionBtnText}>✕</Text>
+          <Text style={[s.actionBtnText, { color: t.textPrimary }]}>✕</Text>
         </Pressable>
       </View>
     </View>
   );
 
   const renderMatchInvite = ({ item }: { item: MatchInvite }) => (
-    <View style={[s.item, s.matchInviteItem]}>
+    <View style={[
+      s.item,
+      { backgroundColor: t.card, borderColor: t.accent + '88', borderWidth: 1.5 },
+      t.glow(t.accent, 8) as any,
+    ]}>
       <View style={s.info}>
-        <Text style={s.nameText}>{item.fromName}</Text>
-        <Text style={[s.statusText, { color: Colors.neonPink }]}>⚔️ MATCH INVITATION</Text>
+        <Text style={[s.nameText, { color: t.textPrimary }]}>{item.fromName}</Text>
+        <Text style={[s.statusText, { color: t.accent }]}>⚔️ MATCH INVITATION</Text>
       </View>
       <View style={s.actions}>
-        <Pressable style={[s.actionBtn, s.acceptBtn]} onPress={() => accept(item)}>
-          <Text style={s.actionBtnText}>⚔️</Text>
+        <Pressable
+          style={[s.actionBtn, { backgroundColor: t.success + '22', borderColor: t.success + '66' }]}
+          onPress={() => accept(item)}
+        >
+          <Text style={[s.actionBtnText, { color: t.textPrimary }]}>⚔️</Text>
         </Pressable>
-        <Pressable style={[s.actionBtn, s.rejectBtn]} onPress={() => reject(item.id)}>
-          <Text style={s.actionBtnText}>✕</Text>
+        <Pressable
+          style={[s.actionBtn, { backgroundColor: t.lose + '22', borderColor: t.lose + '66' }]}
+          onPress={() => reject(item.id)}
+        >
+          <Text style={[s.actionBtnText, { color: t.textPrimary }]}>✕</Text>
         </Pressable>
       </View>
     </View>
   );
 
+  const copyId = async () => {
+    if (myProfile?.gameId) {
+      await Clipboard.setStringAsync(myProfile.gameId);
+      Alert.alert('Copied', 'Your Game ID has been copied to clipboard!');
+    }
+  };
+
   const sections = [
-    ...(matchInvites.length > 0  ? [{ title: 'MATCH INVITES',    data: matchInvites,    type: 'match' }]     : []),
-    ...(friendRequests.length > 0 ? [{ title: 'FRIEND REQUESTS',  data: friendRequests,  type: 'friendReq' }] : []),
+    ...(matchInvites.length > 0 ? [{ title: 'MATCH INVITES', data: matchInvites, type: 'match' }] : []),
+    ...(friendRequests.length > 0 ? [{ title: 'INCOMING REQUESTS', data: friendRequests, type: 'friendReq' }] : []),
+    ...(sentRequests.length > 0 ? [{ title: 'SENT REQUESTS', data: sentRequests, type: 'sentReq' }] : []),
     { title: 'FRIENDS', data: friends, type: 'friend' },
   ];
 
   if (loading) {
     return (
-      <View style={s.center}>
-        <ActivityIndicator color={Colors.neonPurple} size="large" />
+      <View style={[s.center, { backgroundColor: t.bg }]}>
+        <ActivityIndicator color={t.primary} size="large" />
       </View>
     );
   }
 
   return (
     <ScreenWrapper scroll={false} horizontalPadding={0}>
-      {/* Header + Search */}
-      <View style={s.header}>
-        <Text style={s.eyebrow}>👥 SOCIAL HUB</Text>
-        <Text style={s.title}>Friends</Text>
-        <View style={s.searchRow}>
-          <TextInput
-            style={s.searchInput}
-            placeholder="Search by Game ID"
-            placeholderTextColor={Colors.textSecondary}
-            value={searchId}
-            onChangeText={t => setSearchId(t.toUpperCase())}
-            maxLength={6}
-          />
-          <Pressable
-            style={[s.searchBtn, searchId.length !== 6 && { opacity: 0.45 }]}
-            onPress={handleSearch}
-            disabled={searching || searchId.length !== 6}
-          >
-            {searching
-              ? <ActivityIndicator color={Colors.textPrimary} size="small" />
-              : <Text style={s.searchBtnText}>ADD</Text>
-            }
-          </Pressable>
-        </View>
-      </View>
-
       <SectionList
         sections={sections as any}
         keyExtractor={(item, index) => (item as any).id || (item as any).uid || index.toString()}
+        ListHeaderComponent={
+          <View style={s.header}>
+            <Text style={[s.eyebrow, { color: t.primary, ...(t.textGlow(t.primary) as any) }]}>
+              👥 SOCIAL HUB
+            </Text>
+            <View style={s.titleRow}>
+              <Text style={[s.title, { color: t.textPrimary, ...(t.textGlow(t.primary) as any) }]}>
+                Friends
+              </Text>
+              {myProfile && (
+                <Pressable onPress={copyId} style={[s.idBadge, { backgroundColor: t.card, borderColor: t.border }]}>
+                  <Text style={{ color: t.textSecondary, fontSize: 10, fontWeight: '800' }}>
+                    ID: <Text style={{ color: t.primary }}>{myProfile.gameId}</Text>  📋
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+
+            <Pressable
+              style={({ pressed }) => [
+                s.addFriendBtn,
+                { backgroundColor: showSearch ? t.card : t.primary, borderColor: showSearch ? t.primary : 'transparent' },
+                !showSearch && t.glow(t.primary, 10) as any,
+                pressed && { opacity: 0.8 },
+              ]}
+              onPress={() => setShowSearch(!showSearch)}
+            >
+              <Text style={[s.addFriendText, { color: showSearch ? t.primary : '#FFF' }]}>
+                {showSearch ? '✕ CLOSE SEARCH' : '⊕ ADD FRIEND'}
+              </Text>
+            </Pressable>
+
+            {showSearch && (
+              <View style={[s.searchContainer, { backgroundColor: t.card, borderColor: t.primary + '44' }]}>
+                <TextInput
+                  style={[s.searchInput, { color: t.textPrimary }]}
+                  placeholder="Enter 6-digit Game ID"
+                  placeholderTextColor={t.textSecondary}
+                  value={searchId}
+                  onChangeText={v => setSearchId(v.toUpperCase())}
+                  maxLength={6}
+                  autoFocus
+                />
+                <Pressable
+                  style={[s.searchSubmit, { backgroundColor: t.primary }, searchId.length !== 6 && { opacity: 0.5 }]}
+                  onPress={handleSearch}
+                  disabled={searching || searchId.length !== 6}
+                >
+                  {searching ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={s.searchSubmitText}>SEARCH</Text>}
+                </Pressable>
+              </View>
+            )}
+          </View>
+        }
         renderItem={({ item, section }) => {
-          if (section.type === 'match') return renderMatchInvite({ item: item as MatchInvite });
+          if (section.type === 'match')     return renderMatchInvite({ item: item as MatchInvite });
           if (section.type === 'friendReq') return renderFriendRequest({ item });
+          if (section.type === 'sentReq')   return renderSentRequest({ item });
           return renderFriend({ item: item as UserProfile });
         }}
         renderSectionHeader={({ section: { title, data } }) => (
           <View style={s.sectionHeader}>
-            <Text style={s.sectionTitle}>{title}</Text>
-            <View style={s.sectionBadge}>
-              <Text style={s.sectionBadgeText}>{data.length}</Text>
+            <Text style={[s.sectionTitle, { color: t.textSecondary }]}>{title}</Text>
+            <View style={[s.sectionBadge, { backgroundColor: t.border }]}>
+              <Text style={[s.sectionBadgeText, { color: t.textSecondary }]}>{data.length}</Text>
             </View>
           </View>
         )}
         contentContainerStyle={s.list}
         showsVerticalScrollIndicator={false}
-        ListEmptyComponent={null}
+        ListEmptyComponent={
+          !loading && sections.every(sec => sec.data.length === 0) ? (
+            <View style={{ marginTop: 100, alignItems: 'center' }}>
+              <Text style={{ color: t.textSecondary, fontSize: 16, fontWeight: '700', opacity: 0.4 }}>
+                NO SOCIAL ACTIVITY YET
+              </Text>
+            </View>
+          ) : null
+        }
       />
     </ScreenWrapper>
   );
 }
 
 const s = StyleSheet.create({
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.bg },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { paddingHorizontal: Spacing.md, marginTop: Spacing.sm, marginBottom: Spacing.md },
+  eyebrow: { fontSize: 10, fontWeight: '900', letterSpacing: 3, marginBottom: 6 },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
+  title:   { fontSize: 32, fontWeight: '900' },
+  idBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
 
-  header: {
-    paddingHorizontal: Spacing.md,
-    marginTop: Spacing.sm, marginBottom: Spacing.md,
+  addFriendBtn: { 
+    borderRadius: 14, paddingVertical: 14, alignItems: 'center', 
+    marginBottom: Spacing.sm, borderWidth: 1.5 
   },
-  eyebrow: {
-    fontSize: 10, fontWeight: '900', color: Colors.neonPurple,
-    letterSpacing: 3, marginBottom: 6,
-    ...textGlow(Colors.neonPurple),
-  },
-  title: {
-    fontSize: 30, fontWeight: '900', color: Colors.textPrimary,
-    marginBottom: Spacing.md,
-    ...textGlow(Colors.neonPurple),
-  },
+  addFriendText: { fontSize: 13, fontWeight: '900', letterSpacing: 1.5 },
 
-  // Search
-  searchRow: { flexDirection: 'row', gap: Spacing.sm },
+  searchContainer: { 
+    borderRadius: 16, padding: Spacing.sm, flexDirection: 'row', gap: 10,
+    borderWidth: 1, marginBottom: Spacing.md 
+  },
   searchInput: {
-    flex: 1, backgroundColor: Colors.card, borderRadius: 14,
-    borderWidth: 1, borderColor: Colors.border,
-    paddingHorizontal: Spacing.md, paddingVertical: 12,
-    color: Colors.textPrimary, fontSize: 15, letterSpacing: 2,
+    flex: 1, paddingHorizontal: Spacing.md, fontSize: 16, letterSpacing: 3, fontWeight: '700'
   },
-  searchBtn: {
-    backgroundColor: Colors.neonPurple, borderRadius: 14,
-    paddingHorizontal: Spacing.lg, justifyContent: 'center', alignItems: 'center',
-    ...(glow(Colors.neonPurple, 8) as any),
-  },
-  searchBtnText: { color: '#FFF', fontWeight: '900', fontSize: 12, letterSpacing: 1.5 },
+  searchSubmit: { borderRadius: 10, paddingHorizontal: 15, justifyContent: 'center' },
+  searchSubmitText: { color: '#FFF', fontWeight: '900', fontSize: 11 },
 
-  // List
-  list: { paddingHorizontal: Spacing.md, paddingBottom: 100 },
-  sectionHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginTop: Spacing.lg, marginBottom: Spacing.sm,
-  },
-  sectionTitle: {
-    fontSize: 10, fontWeight: '900', color: Colors.textSecondary, letterSpacing: 2,
-  },
-  sectionBadge: {
-    backgroundColor: Colors.border, borderRadius: 8,
-    paddingHorizontal: 8, paddingVertical: 2,
-  },
-  sectionBadgeText: { fontSize: 10, fontWeight: '900', color: Colors.textSecondary },
+  list:         { paddingHorizontal: Spacing.md, paddingBottom: 100 },
+  
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: Spacing.lg, marginBottom: Spacing.sm },
+  sectionTitle:  { fontSize: 10, fontWeight: '900', letterSpacing: 2 },
+  sectionBadge:  { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
+  sectionBadgeText: { fontSize: 10, fontWeight: '900' },
 
-  // Items
   item: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.card, borderRadius: 16,
-    padding: Spacing.md, marginBottom: 8,
-    borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 16, padding: Spacing.md,
+    marginBottom: 8, borderWidth: 1,
   },
-  requestItem: {
-    borderColor: Colors.neonYellow + '55',
-    ...(glow(Colors.neonYellow, 5) as any),
-  },
-  matchInviteItem: {
-    borderColor: Colors.neonPink + '88', borderWidth: 1.5,
-    ...(glow(Colors.neonPink, 8) as any),
-  },
-
+  requestItem: {},
   statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12 },
-  info: { flex: 1 },
-  nameText: { fontSize: 15, fontWeight: '800', color: Colors.textPrimary },
-  statusText: { fontSize: 9, fontWeight: '900', color: Colors.textSecondary, marginTop: 3, letterSpacing: 1 },
+  info:      { flex: 1 },
+  nameText:  { fontSize: 16, fontWeight: '800' },
+  statusText: { fontSize: 10, fontWeight: '900', marginTop: 3, letterSpacing: 1 },
 
-  inviteBtn: {
-    backgroundColor: Colors.neonPurple + '22',
-    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8,
-    borderWidth: 1, borderColor: Colors.neonPurple + '66',
-  },
-  inviteBtnText: { color: Colors.neonPurple, fontSize: 11, fontWeight: '900', letterSpacing: 0.5 },
-
-  actions: { flexDirection: 'row', gap: Spacing.sm },
-  actionBtn: {
-    width: 38, height: 38, borderRadius: 19,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  acceptBtn: {
-    backgroundColor: Colors.neonGreen + '22',
-    borderWidth: 1, borderColor: Colors.neonGreen + '66',
-    ...(glow(Colors.neonGreen, 4) as any),
-  },
-  rejectBtn: {
-    backgroundColor: Colors.lose + '22',
-    borderWidth: 1, borderColor: Colors.lose + '66',
-  },
-  actionBtnText: { color: Colors.textPrimary, fontSize: 16, fontWeight: '900' },
+  actions:       { flexDirection: 'row', gap: Spacing.sm },
+  actionBtn:     { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
+  actionBtnText: { fontSize: 16, fontWeight: '900' },
 });

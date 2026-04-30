@@ -4,7 +4,7 @@
 
 import { Board, Player, Difficulty } from '../game/gameTypes';
 
-export type MatchStatus = 'waiting' | 'playing' | 'timeout_pending' | 'finished' | 'abandoned';
+export type MatchStatus = 'waiting' | 'playing' | 'timeout_pending' | 'finished' | 'abandoned' | 'waiting_next_round';
 export type InviteStatus = 'pending' | 'accepted' | 'rejected';
 
 export interface PlayerInfo {
@@ -36,6 +36,7 @@ export interface MatchDocument {
   winStreaks: Record<string, number>;
   createdAt: any;
   updatedAt: any;
+  readyPlayers?: string[];
 }
 
 export interface MatchInvite {

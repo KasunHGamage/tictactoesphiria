@@ -1,6 +1,6 @@
 import { 
   doc, getDoc, setDoc, runTransaction, onSnapshot, 
-  serverTimestamp, Unsubscribe, updateDoc
+  serverTimestamp, Unsubscribe, updateDoc, arrayUnion
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { MatchDocument, MatchStatus, MovePayload, PlayerInfo } from './matchTypes';
@@ -47,6 +47,7 @@ export async function createMatch(uid: string, displayName: string, config: Game
     winStreaks: { [uid]: 0 },
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+    timedOutPlayer: null,
   };
 
   await setDoc(matchRef(matchId), match);
@@ -124,13 +125,21 @@ export async function applyMove(matchId: string, payload: MovePayload, playerSid
   });
 }
 
+export async function setReadyForNextRound(matchId: string, uid: string): Promise<void> {
+  await updateDoc(matchRef(matchId), {
+    status: 'waiting_next_round',
+    readyPlayers: arrayUnion(uid),
+    updatedAt: serverTimestamp()
+  });
+}
+
 export async function startNextRound(matchId: string): Promise<void> {
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(matchRef(matchId));
     if (!snap.exists()) return;
     const data = snap.data() as MatchDocument;
     
-    if (data.status !== 'finished' && data.status !== 'abandoned') return;
+    if (data.status !== 'waiting_next_round' || (data.readyPlayers?.length || 0) < 2) return;
 
     const nextRound = data.roundNumber + 1;
 
@@ -145,6 +154,7 @@ export async function startNextRound(matchId: string): Promise<void> {
       moveCount: 0,
       turnStartedAt: serverTimestamp(),
       timedOutPlayer: null,
+      readyPlayers: [],
       updatedAt: serverTimestamp()
     });
   });

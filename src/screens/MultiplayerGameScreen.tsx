@@ -1,96 +1,98 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ScreenWrapper from '../components/ScreenWrapper';
 import {
-  Animated as RNAnimated, Platform, Pressable, StatusBar,
-  StyleSheet, Text, useWindowDimensions, View, Alert, ScrollView,
-  ActivityIndicator,
+  Pressable, StatusBar, StyleSheet, Text, useWindowDimensions,
+  View, Alert, ActivityIndicator,
 } from 'react-native';
 import { CommonActions } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
-import Animated, { 
-  useSharedValue, useAnimatedStyle, withTiming, withSequence, 
-  withDelay, withRepeat, Easing, interpolate, runOnJS, useDerivedValue 
+import Animated, {
+  useSharedValue, useAnimatedStyle, withTiming, withSequence,
+  withDelay, withRepeat, Easing, useDerivedValue,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import NeonConfetti from '../components/NeonConfetti';
 import NeonButton from '../components/NeonButton';
-import { Colors, Spacing, glow } from '../../constants/theme';
+import { useAppTheme } from '../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Board, Player } from '../game/gameTypes';
-import { checkWinner, canPlace, getWinningLine, getPlayerPieces } from '../game/gameEngine';
+import { canPlace, getWinningLine, getPlayerPieces } from '../game/gameEngine';
 import { useMatch } from '../hooks/useMatch';
 import { recordMatchResult } from '../services/userService';
-import { startNextRound, triggerTimeout, continueMatch, forfeitMatch } from '../services/matchService';
+import { triggerTimeout, continueMatch, forfeitMatch, setReadyForNextRound, startNextRound } from '../services/matchService';
 
-// Use global theme tokens from constants/theme
+// ── StrikeLine ────────────────────────────────────────────────────
+function StrikeLine({ winLine, layouts, lineColor }: {
+  winLine: number[] | null;
+  layouts: Record<number, any>;
+  lineColor: string;
+}) {
+  const progress     = useSharedValue(0);
+  const winLineValue = useDerivedValue(() => winLine);
 
+  useEffect(() => {
+    progress.value = winLine
+      ? withDelay(200, withTiming(1, { duration: 450, easing: Easing.out(Easing.quad) }))
+      : 0;
+  }, [winLine]);
 
+  const animStyle = useAnimatedStyle(() => {
+    const line = winLineValue.value;
+    if (!line || !layouts[line[0]] || !layouts[line[2]]) return { opacity: 0 };
+    const s = layouts[line[0]], e = layouts[line[2]];
+    const sx = s.x + s.w / 2, sy = s.y + s.h / 2;
+    const ex = e.x + e.w / 2, ey = e.y + e.h / 2;
+    const dx = ex - sx, dy = ey - sy;
+    return {
+      position: 'absolute', top: sy - 3, left: sx,
+      width: Math.sqrt(dx * dx + dy * dy), height: 6,
+      backgroundColor: lineColor, borderRadius: 4, zIndex: 20, opacity: 1,
+      transform: [{ rotate: `${Math.atan2(dy, dx)}rad` }, { scaleX: progress.value }],
+      // @ts-ignore
+      transformOrigin: 'left',
+    };
+  });
 
-interface CellProps {
-  index: number; value: Player | null; isSelected: boolean;
-  isWinCell: boolean; isOtherDimmed: boolean; fontSize: number; disabled: boolean;
-  boardSize: number;
-  onPress: (i: number) => void;
-  onLayout: (index: number, layout: { x: number, y: number, w: number, h: number }) => void;
+  return <Animated.View pointerEvents="none" style={animStyle} />;
 }
-function Cell({ index, value, isSelected, isWinCell, isOtherDimmed, size, fontSize, disabled, boardSize, onPress, onLayout }: any) {
+
+// ── Cell ─────────────────────────────────────────────────────────
+function Cell({ index, value, isSelected, isWinCell, isOtherDimmed, size, fontSize, disabled, onPress, onLayout, colors }: any) {
   const scale = useSharedValue(1);
   const pulse = useSharedValue(1);
 
-  const handleLayout = (e: any) => {
-    const { x, y, width, height } = e.nativeEvent.layout;
-    onLayout(index, { x, y, w: width, h: height });
-  };
-
   useEffect(() => {
-    if (isWinCell) {
-      pulse.value = withRepeat(
-        withSequence(
-          withTiming(1.12, { duration: 600 }),
-          withTiming(1, { duration: 600 })
-        ),
-        -1, 
-        true 
-      );
-    } else {
-      pulse.value = 1;
-    }
+    pulse.value = isWinCell
+      ? withRepeat(withSequence(withTiming(1.12, { duration: 600 }), withTiming(1, { duration: 600 })), -1, true)
+      : 1;
   }, [isWinCell]);
 
-  const animatedCellInner = useAnimatedStyle(() => ({
+  const { winColor, selectedColor, cellBg, cellBorder, xColor, oColor, isCalm } = colors;
+  const animCell = useAnimatedStyle(() => ({
     transform: [{ scale: isWinCell ? pulse.value : scale.value }],
     opacity: isOtherDimmed && !isWinCell ? 0.4 : 1,
-    borderColor: isWinCell ? Colors.neonYellow : isSelected ? Colors.neonYellow : Colors.border,
-    backgroundColor: isSelected ? 'rgba(255,214,10,0.08)' : isWinCell ? 'rgba(255,214,10,0.15)' : Colors.card,
+    borderColor: isWinCell ? winColor : isSelected ? selectedColor : cellBorder,
+    backgroundColor: isSelected ? selectedColor + '18' : isWinCell ? winColor + '22' : cellBg,
   }));
 
-  const handle = () => {
-    if (disabled) return;
-    scale.value = withSequence(
-      withTiming(0.84, { duration: 70 }),
-      withTiming(1, { duration: 110 })
-    );
-    onPress(index);
-  };
-
-  const color = value === 'X' ? Colors.neonPink : Colors.neonBlue;
-  const glow = value === 'X' ? Colors.neonPink : Colors.neonBlue;
+  const pieceColor = value === 'X' ? xColor : oColor;
 
   return (
-    <Pressable 
-      onLayout={handleLayout} 
-      onPress={handle} 
-      accessibilityLabel={`cell-${index}`} 
+    <Pressable
+      onLayout={e => { const { x, y, width: w, height: h } = e.nativeEvent.layout; onLayout(index, { x, y, w, h }); }}
+      accessibilityLabel={`cell-${index}`}
+      onPress={() => {
+        if (disabled) return;
+        scale.value = withSequence(withTiming(0.84, { duration: 70 }), withTiming(1, { duration: 110 }));
+        onPress(index);
+      }}
       style={{ width: size, height: size }}
     >
-      <Animated.View style={[ms.cellInner, animatedCellInner]}>
+      <Animated.View style={[ms.cellInner, { borderColor: cellBorder }, animCell]}>
         {value && (
-          <Text style={{ 
-            fontSize, fontWeight: '900', color, 
-            textShadowColor: isWinCell ? Colors.neonYellow : glow, 
-            textShadowOffset: { width: 0, height: 0 }, 
-            textShadowRadius: isWinCell ? 20 : 12 
+          <Text style={{
+            fontSize, fontWeight: '900', color: pieceColor,
+            textShadowColor: isCalm ? 'transparent' : pieceColor,
+            textShadowRadius: isCalm ? 0 : 12,
           }}>
             {value === 'X' ? '✕' : '○'}
           </Text>
@@ -100,270 +102,137 @@ function Cell({ index, value, isSelected, isWinCell, isOtherDimmed, size, fontSi
   );
 }
 
-
-function StrikeLine({ winLine, layouts }: { winLine: number[] | null, layouts: Record<number, any> }) {
-  const progress = useSharedValue(0);
-  const winLineValue = useDerivedValue(() => winLine);
-
-  useEffect(() => {
-    if (winLine) {
-      progress.value = withDelay(200, withTiming(1, { duration: 450, easing: Easing.out(Easing.quad) }));
-    } else {
-      progress.value = 0;
-    }
-  }, [winLine]);
-
-  const animatedStyle = useAnimatedStyle(() => {
-    const line = winLineValue.value;
-    if (!line || !layouts[line[0]] || !layouts[line[2]]) return { opacity: 0 };
-
-    const start = layouts[line[0]];
-    const end = layouts[line[2]];
-
-    const startX = start.x + start.w / 2;
-    const startY = start.y + start.h / 2;
-    const endX = end.x + end.w / 2;
-    const endY = end.y + end.h / 2;
-
-    const dx = endX - startX;
-    const dy = endY - startY;
-    const length = Math.sqrt(dx * dx + dy * dy);
-    const angle = Math.atan2(dy, dx);
-
-    return {
-      position: 'absolute',
-      top: startY - 3, // Center the line height (6/2)
-      left: startX,
-      width: length,
-      height: 6,
-      backgroundColor: Colors.neonYellow,
-      borderRadius: 4,
-      shadowColor: Colors.neonYellow,
-      shadowOpacity: 0.85,
-      shadowRadius: 12,
-      elevation: 10,
-      zIndex: 20,
-      opacity: 1,
-      transform: [
-        { rotate: `${angle}rad` },
-        { scaleX: progress.value }
-      ],
-      // Reanimated 3 supports transformOrigin as a property
-      // If using older Reanimated, you'd need to translate it
-      // but transformOrigin is supported in modern versions
-      // @ts-ignore
-      transformOrigin: 'left',
-    };
-  });
-
-  return <Animated.View pointerEvents="none" style={animatedStyle} />;
-}
-
-
+// ── Main Screen ───────────────────────────────────────────────────
 export default function MultiplayerGameScreen({ route, navigation }: any) {
   const { matchId, playerSide, myUid, myName } = route.params;
   const { width: W } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
+  const t       = useAppTheme();
+  const isCalm  = t.mode === 'calm';
   const BOARD_WIDTH = W - 32;
 
   const { match, optimisticBoard, myTurn, error, applyMove, resign } = useMatch(matchId, myUid, playerSide);
-  
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-  const [resultRecorded, setResultRecorded] = useState(false);
-  const [showConfetti, setShowConfetti] = useState(false);
-  const [tileLayouts, setTileLayouts] = useState<Record<number, any>>({});
-  const [xpGained, setXpGained] = useState<number | null>(null);
-  const [timeLeft, setTimeLeft] = useState<number | null>(null);
-  
-  // Reanimated values for board focus
-  const boardScale = useSharedValue(1);
-  const resultScale = useSharedValue(0.8);
-  const resultOpacity = useSharedValue(0);
-  const turnPulse = useSharedValue(1);
 
-  const isAITurnRunning = useRef(false);
-  const nextRoundTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [selectedIdx,    setSelectedIdx]    = useState<number | null>(null);
+  const [resultRecorded, setResultRecorded] = useState(false);
+  const [showConfetti,   setShowConfetti]   = useState(false);
+  const [tileLayouts,    setTileLayouts]    = useState<Record<number, any>>({});
+  const [xpGained,       setXpGained]       = useState<number | null>(null);
+  const [timeLeft,       setTimeLeft]       = useState<number | null>(null);
+  const [gameEnded,      setGameEnded]      = useState(false);
+
+  const boardScale    = useSharedValue(1);
+  const resultScale   = useSharedValue(0.8);
+  const resultOpacity = useSharedValue(0);
+  const turnPulse     = useSharedValue(1);
+
   const isEndingMatch = useRef(false);
-  const [gameEnded, setGameEnded] = useState(false);
 
   const handleEndMatch = async () => {
     if (isEndingMatch.current || match?.status === 'finished') return;
     isEndingMatch.current = true;
-    console.log("[DEBUG] END MATCH CLICKED");
-    try {
-      await forfeitMatch(matchId, playerSide);
-      setGameEnded(true);
-      console.log("[DEBUG] STATUS SET TO FINISHED");
-    } catch (err) {
-      console.error("[DEBUG] Failed to end match:", err);
-      isEndingMatch.current = false;
-    }
+    try { await forfeitMatch(matchId, playerSide); setGameEnded(true); }
+    catch (err) { console.error(err); isEndingMatch.current = false; }
   };
 
-  const handleTileLayout = useCallback((index: number, layout: any) => {
-    setTileLayouts(prev => ({ ...prev, [index]: layout }));
-  }, []);
+  const handleTileLayout = useCallback((index: number, layout: any) =>
+    setTileLayouts(prev => ({ ...prev, [index]: layout })), []);
 
   const resetLocalState = useCallback(() => {
-    setSelectedIdx(null);
-    setResultRecorded(false);
-    setShowConfetti(false);
-    setXpGained(null);
-    boardScale.value = 1;
-    resultScale.value = 0.8;
-    resultOpacity.value = 0;
+    setSelectedIdx(null); setResultRecorded(false); setShowConfetti(false); setXpGained(null);
+    boardScale.value = 1; resultScale.value = 0.8; resultOpacity.value = 0;
   }, []);
 
-  // Turn pulse animation loop
   useEffect(() => {
     turnPulse.value = withRepeat(
-      withSequence(
-        withTiming(1.05, { duration: 600, easing: Easing.inOut(Easing.ease) }),
-        withTiming(1, { duration: 600, easing: Easing.inOut(Easing.ease) })
-      ),
-      -1,
-      true
+      withSequence(withTiming(1.05, { duration: 600, easing: Easing.inOut(Easing.ease) }), withTiming(1, { duration: 600, easing: Easing.inOut(Easing.ease) })),
+      -1, true
     );
   }, []);
 
-  // Handle Round Reset or Timeout Continue
   useEffect(() => {
-    if (match?.status === 'playing' && (resultRecorded || resultOpacity.value > 0)) {
-      resetLocalState();
-    }
-    if (match?.status === 'finished') {
-      setGameEnded(true);
-    }
+    if (match?.status === 'playing' && (resultRecorded || resultOpacity.value > 0)) resetLocalState();
+    if (match?.status === 'finished') setGameEnded(true);
   }, [match?.status, resultRecorded, resetLocalState]);
 
-  const gridSize = match?.gridSize || 3;
-  const BOARD_BORDER = 2; // borderWidth on the board View
-  const cellSize = Math.floor((BOARD_WIDTH - BOARD_BORDER * 2) / gridSize);
+  const gridSize   = match?.gridSize || 3;
+  const cellSize   = Math.floor((BOARD_WIDTH - 4) / gridSize);
   const board: Board = optimisticBoard ?? match?.board ?? Array(gridSize * gridSize).fill(null);
-  const winLength = match?.winLength || 3;
-  const maxPieces = match?.maxPieces || 3;
-  const boardFontSize = Math.floor(cellSize * 0.44);
+  const winLength  = match?.winLength || 3;
+  const maxPieces  = match?.maxPieces || 3;
+  const bFontSize  = Math.floor(cellSize * 0.44);
 
-  // Timeout logic
+  // Timeout countdown
   useEffect(() => {
-    if (!match || match.status !== 'playing' || !match.turnStartedAt || !match.turnDuration) {
-      setTimeLeft(null);
-      return;
-    }
-
-    const startedMs = match.turnStartedAt.toMillis ? match.turnStartedAt.toMillis() : (match.turnStartedAt.seconds * 1000) || Date.now();
-    
-    const interval = setInterval(() => {
-      const now = Date.now();
-      const diff = Math.floor((now - startedMs) / 1000);
-      const remaining = Math.max(0, match.turnDuration - diff);
-      
-      if (remaining !== timeLeft) {
-        setTimeLeft(remaining);
-        if (remaining <= 5 && remaining > 0 && match.currentPlayer === playerSide) {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        }
-      }
-
-      if (remaining === 0) {
-        clearInterval(interval);
-        console.log("[TIMEOUT] Timer reached 0. Current status:", match.status);
-        
-        if (match.status === 'playing') {
-          console.log("[TIMEOUT] Triggering status update to timeout_pending for player:", match.currentPlayer);
-          if (match.currentPlayer === playerSide) {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          }
-          
-          triggerTimeout(matchId, match.currentPlayer).catch(err => {
-            console.error('[TIMEOUT] Failed to trigger timeout:', err);
-          });
-        }
-      }
+    if (!match || match.status !== 'playing' || !match.turnStartedAt || !match.turnDuration) { setTimeLeft(null); return; }
+    const startMs = match.turnStartedAt.toMillis ? match.turnStartedAt.toMillis() : match.turnStartedAt.seconds * 1000;
+    const iv = setInterval(() => {
+      const rem = Math.max(0, match.turnDuration - Math.floor((Date.now() - startMs) / 1000));
+      setTimeLeft(rem);
+      if (rem <= 5 && rem > 0 && match.currentPlayer === playerSide) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (rem === 0) { clearInterval(iv); if (match.status === 'playing') triggerTimeout(matchId, match.currentPlayer).catch(console.error); }
     }, 1000);
-
-    return () => clearInterval(interval);
+    return () => clearInterval(iv);
   }, [match?.turnStartedAt, match?.status, match?.currentPlayer, playerSide, matchId]);
 
-  console.log(`[DEBUG] MultiplayerGameScreen: gridSize=${gridSize}, cellSize=${cellSize}, BOARD_WIDTH=${BOARD_WIDTH}`);
-
-  const phase = match ? (canPlace(board, playerSide, maxPieces) ? 'placement' : 'movement') : 'placement';
-  const winner = match?.winner;
+  const phase      = match ? (canPlace(board, playerSide, maxPieces) ? 'placement' : 'movement') : 'placement';
+  const winner     = match?.winner;
   const winningLine = match?.winningLine;
-  const winSet = new Set(winningLine || []);
-  
-  const isWinner = winner === playerSide;
-  const isLoser = winner && winner !== playerSide;
+  const winSet     = new Set(winningLine || []);
+  const isWinner   = winner === playerSide;
+  const isLoser    = winner && winner !== playerSide;
   const opponentSide: Player = playerSide === 'X' ? 'O' : 'X';
   const opponentName = playerSide === 'X' ? match?.playerO?.displayName ?? 'Opponent' : match?.playerX?.displayName ?? 'Opponent';
+  const myScore    = match?.scores?.[myUid] || 0;
+  const oppUid     = playerSide === 'X' ? match?.playerO?.uid : match?.playerX?.uid;
+  const oppScore   = (oppUid && match?.scores?.[oppUid]) || 0;
+  const myStreak   = match?.winStreaks?.[myUid] || 0;
+  const status     = match?.status;
 
-  // Session Stats
-  const myScore = match?.scores?.[myUid] || 0;
-  const oppUid = playerSide === 'X' ? match?.playerO?.uid : match?.playerX?.uid;
-  const oppScore = (oppUid && match?.scores?.[oppUid]) || 0;
-  const myStreak = match?.winStreaks?.[myUid] || 0;
-
-  // Cinematic Win Sequence + Auto Next Round
+  // Win sequence
   useEffect(() => {
-    if (match?.status === 'finished' || match?.status === 'abandoned' || match?.status === 'timeout_pending') {
-      if (winner) {
-        boardScale.value = withDelay(100, withTiming(1.05, { duration: 400 }));
-        setTimeout(() => {
-          if (isWinner) setShowConfetti(true);
-          resultOpacity.value = withTiming(1, { duration: 400 });
-          resultScale.value = withTiming(1, { duration: 500, easing: Easing.out(Easing.back(1.5)) });
-        }, 600);
-      } else {
-        setTimeout(() => {
-          resultOpacity.value = withTiming(1, { duration: 400 });
-          resultScale.value = withTiming(1, { duration: 500, easing: Easing.out(Easing.back(1.5)) });
-        }, 600);
-      }
-
-      if (match?.status === 'timeout_pending') return; // Don't record result yet
-
+    if (status === 'finished' || status === 'abandoned' || status === 'timeout_pending' || status === 'waiting_next_round') {
+      const animate = () => {
+        resultOpacity.value = withTiming(1, { duration: 400 });
+        resultScale.value   = withTiming(1, { duration: 500, easing: Easing.out(Easing.back(1.5)) });
+      };
+      if (winner) { boardScale.value = withDelay(100, withTiming(1.05, { duration: 400 })); setTimeout(() => { if (isWinner) setShowConfetti(true); animate(); }, 600); }
+      else setTimeout(animate, 600);
+      if (status === 'timeout_pending') return;
       if (!resultRecorded) {
         setResultRecorded(true);
-        const xp = (isWinner ? 50 : 20) + (myStreak * 10);
-        setXpGained(xp);
-        recordMatchResult(myUid, isWinner, isWinner ? myStreak : 0);
-        
+        setXpGained((isWinner ? 50 : 20) + myStreak * 10);
+        recordMatchResult(myUid, !!isWinner, isWinner ? myStreak : 0);
         if (isWinner) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         else if (isLoser) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-
-        console.log("[DEBUG] Match status updated to", match.status, "reason:", match.endReason);
       }
     }
-  }, [match?.status, winner, isWinner, isLoser, myUid, resultRecorded, myStreak, matchId, match?.endReason]);
+  }, [status, winner, isWinner, isLoser, myUid, resultRecorded, myStreak]);
+
+  // Auto-trigger next round when both are ready
+  useEffect(() => {
+    if (match?.status === 'waiting_next_round' && match?.readyPlayers?.length === 2) {
+      if (playerSide === 'X') {
+        startNextRound(matchId).catch(console.error);
+      }
+    }
+  }, [match?.status, match?.readyPlayers?.length, playerSide, matchId]);
 
   const handleCell = useCallback(async (index: number) => {
     if (!match || !myTurn || match.status !== 'playing') return;
-    if (phase === 'placement') {
-      if (board[index] !== null) return;
-      await applyMove({ type: 'place', toIndex: index });
-      return;
-    }
-    if (selectedIdx === null) {
-      if (board[index] !== playerSide) return;
-      setSelectedIdx(index);
-      return;
-    }
+    if (phase === 'placement') { if (board[index]) return; await applyMove({ type: 'place', toIndex: index }); return; }
+    if (selectedIdx === null) { if (board[index] !== playerSide) return; setSelectedIdx(index); return; }
     if (selectedIdx === index) { setSelectedIdx(null); return; }
     if (board[index] === playerSide) { setSelectedIdx(index); return; }
     if (board[index] !== null) return;
-    const from = selectedIdx;
-    setSelectedIdx(null);
+    const from = selectedIdx; setSelectedIdx(null);
     await applyMove({ type: 'move', fromIndex: from, toIndex: index });
   }, [match, myTurn, phase, board, selectedIdx, playerSide, matchId]);
 
-  const handleResign = () => {
-    Alert.alert('Exit Match?', 'Session will be saved.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Exit', style: 'destructive', onPress: () => resign().then(() => navigation.goBack()) },
-    ]);
-  };
+  const handleResign = () => Alert.alert('Exit Match?', 'Session will be saved.', [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Exit', style: 'destructive', onPress: () => resign().then(() => navigation.goBack()) },
+  ]);
 
-  const status = match?.status;
   const statusLabel = !match ? 'Connecting…'
     : status === 'waiting' ? 'Waiting for opponent…'
     : status === 'timeout_pending' ? (match?.timedOutPlayer === playerSide ? "Time's Up!" : `Waiting for ${opponentName}…`)
@@ -371,95 +240,89 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
     : status === 'abandoned' ? (isWinner ? 'Opponent left — You win!' : 'You left the match')
     : myTurn
       ? phase === 'placement' ? `Place Piece (${getPlayerPieces(board, playerSide).length}/${maxPieces})`
-        : selectedIdx === null ? 'Select Piece'
-        : 'Move to Target'
+        : selectedIdx === null ? 'Select Piece' : 'Move to Target'
     : `${opponentName}'s turn…`;
 
-  const animatedBoardStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: boardScale.value }]
+  const animBoard  = useAnimatedStyle(() => ({ transform: [{ scale: boardScale.value }] }));
+  const animResult = useAnimatedStyle(() => ({ opacity: resultOpacity.value, transform: [{ scale: resultScale.value }] }));
+  const animOverlay = useAnimatedStyle(() => ({
+    opacity: resultOpacity.value, ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 100,
+    justifyContent: 'center' as const, alignItems: 'center' as const, paddingHorizontal: 20,
   }));
+  const animMyCard  = useAnimatedStyle(() => ({ transform: [{ scale: myTurn  && status === 'playing' ? turnPulse.value : 1 }] }));
+  const animOppCard = useAnimatedStyle(() => ({ transform: [{ scale: !myTurn && status === 'playing' ? turnPulse.value : 1 }] }));
 
-  const animatedResultStyle = useAnimatedStyle(() => ({
-    opacity: resultOpacity.value,
-    transform: [{ scale: resultScale.value }]
-  }));
+  const cellColors = { winColor: t.warning, selectedColor: t.primary, cellBg: t.card, cellBorder: t.border, xColor: t.accent, oColor: t.secondary, isCalm };
+  const resultTitleColor = isWinner ? t.win : isLoser ? t.lose : t.textPrimary;
+  const modalStyle = isCalm
+    ? { backgroundColor: '#F9FAFB', borderColor: t.border, borderWidth: 1 }
+    : { backgroundColor: '#130820', borderColor: t.primary, borderWidth: 2, ...(t.glow(t.primary, 22) as any) };
 
-  const animatedOverlayStyle = useAnimatedStyle(() => ({
-    opacity: resultOpacity.value,
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    zIndex: 100,
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    paddingHorizontal: 20,
-  }));
-
-  const animatedMyCardStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: myTurn && status === 'playing' ? turnPulse.value : 1 }]
-  }));
-
-  const animatedOppCardStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: !myTurn && status === 'playing' ? turnPulse.value : 1 }]
-  }));
+  const exitToLobby = () => navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Main', params: { screen: 'Home' } }] }));
 
   return (
     <ScreenWrapper scroll={false} horizontalPadding={0}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.bg} />
+      <StatusBar barStyle={isCalm ? 'dark-content' : 'light-content'} backgroundColor={t.bg} />
 
-      {/* Session Header */}
+      {/* Header */}
       <View style={ms.header}>
-        <Pressable onPress={handleResign} style={ms.backBtn}>
-          <Ionicons name="close" size={24} color={Colors.neonPink} />
+        <Pressable onPress={handleResign} style={[ms.backBtn, { backgroundColor: t.card, borderColor: t.accent + '66' }]}>
+          <Ionicons name="close" size={24} color={t.accent} />
         </Pressable>
-        <View style={ms.roundBadge}>
-          <Text style={ms.roundTxt}>ROUND {match?.roundNumber || 1}</Text>
+        <View style={[ms.badge, { backgroundColor: t.primary + '22', borderColor: t.primary }, t.glow(t.primary, 6) as any]}>
+          <Text style={[ms.badgeTxt, { color: t.primary }]}>ROUND {match?.roundNumber || 1}</Text>
         </View>
-        <Text style={ms.matchCode}>{matchId}</Text>
+        <Text style={[ms.matchCode, { color: t.textSecondary }]}>{matchId}</Text>
       </View>
 
       <View style={ms.content}>
         {/* Player HUD */}
         <View style={ms.players}>
-          <Animated.View style={[ms.playerCard, myTurn && status === 'playing' && ms.activeCard, animatedMyCardStyle]}>
-            <Text style={[ms.symbol, { color: playerSide === 'X' ? Colors.neonPink : Colors.neonBlue }]}>{playerSide}</Text>
-            <Text style={ms.score}>{myScore}</Text>
-            {myStreak > 0 && <Text style={ms.streak}>🔥 {myStreak}</Text>}
-            <Text style={ms.name} numberOfLines={1}>{myName}</Text>
+          <Animated.View style={[
+            ms.playerCard, { backgroundColor: t.card, borderColor: t.border },
+            myTurn && status === 'playing' && { borderColor: t.primary, borderWidth: 2, ...(t.glow(t.primary, 14) as any) },
+            animMyCard,
+          ]}>
+            <Text style={[ms.symbol, { color: playerSide === 'X' ? t.accent : t.secondary }]}>{playerSide}</Text>
+            <Text style={[ms.score, { color: t.textPrimary }]}>{myScore}</Text>
+            {myStreak > 0 && <Text style={[ms.streak, { color: t.warning }]}>🔥 {myStreak}</Text>}
+            <Text style={[ms.name, { color: t.textSecondary }]} numberOfLines={1}>{myName}</Text>
           </Animated.View>
-          
+
           <View style={ms.vsContainer}>
-            <Text style={ms.vsTxt}>VS</Text>
+            <View style={[ms.vsCircle, { backgroundColor: isCalm ? t.cardAlt : '#160B28', borderColor: t.primary + '66' }, t.glow(t.primary, 5) as any]}>
+              <Text style={[ms.vsTxt, { color: t.primary }]}>VS</Text>
+            </View>
           </View>
 
-          <Animated.View style={[ms.playerCard, !myTurn && status === 'playing' && ms.activeCard, animatedOppCardStyle]}>
-            <Text style={[ms.symbol, { color: opponentSide === 'X' ? Colors.neonPink : Colors.neonBlue }]}>{opponentSide}</Text>
-            <Text style={ms.score}>{oppScore}</Text>
-            <Text style={ms.name} numberOfLines={1}>{opponentName}</Text>
+          <Animated.View style={[
+            ms.playerCard, { backgroundColor: t.card, borderColor: t.border },
+            !myTurn && status === 'playing' && { borderColor: t.primary, borderWidth: 2, ...(t.glow(t.primary, 14) as any) },
+            animOppCard,
+          ]}>
+            <Text style={[ms.symbol, { color: opponentSide === 'X' ? t.accent : t.secondary }]}>{opponentSide}</Text>
+            <Text style={[ms.score, { color: t.textPrimary }]}>{oppScore}</Text>
+            <Text style={[ms.name, { color: t.textSecondary }]} numberOfLines={1}>{opponentName}</Text>
           </Animated.View>
         </View>
 
-        {/* Dynamic Instruction Card */}
+        {/* Instruction Card */}
         {status === 'playing' && (
-          <View style={ms.instructionCard}>
-            <View style={ms.instrRow}>
-              <Text style={ms.instrEmoji}>🎯</Text>
-              <Text style={ms.instrLabel}>{gridSize}x{gridSize} • {winLength} in a row</Text>
-            </View>
-            <View style={ms.instrRow}>
-              <Text style={ms.instrEmoji}>📦</Text>
-              <Text style={ms.instrLabel}>Pieces: {getPlayerPieces(board, playerSide).length} / {maxPieces}</Text>
-            </View>
-            <View style={ms.instrHintBox}>
-              <Text style={ms.instrHintTxt}>
-                {phase === 'placement' 
-                  ? `👉 Place ${maxPieces - getPlayerPieces(board, playerSide).length} more piece${maxPieces - getPlayerPieces(board, playerSide).length > 1 ? 's' : ''}`
+          <View style={[ms.infoCard, { backgroundColor: t.card, borderColor: t.border }, t.glow(t.primary, 4) as any]}>
+            <View style={ms.instrRow}><Text style={ms.emoji}>🎯</Text><Text style={[ms.instrLbl, { color: t.textPrimary }]}>{gridSize}×{gridSize} • {winLength} in a row</Text></View>
+            <View style={ms.instrRow}><Text style={ms.emoji}>📦</Text><Text style={[ms.instrLbl, { color: t.textPrimary }]}>Pieces: {getPlayerPieces(board, playerSide).length} / {maxPieces}</Text></View>
+            <View style={[ms.hintBox, { borderTopColor: t.border }]}>
+              <Text style={[ms.hintTxt, { color: t.primary }]}>
+                {phase === 'placement'
+                  ? `👉 Place ${maxPieces - getPlayerPieces(board, playerSide).length} more`
                   : '👉 Select a piece to move'}
               </Text>
             </View>
-            {timeLeft !== null && (
+            {timeLeft != null && (
               <View style={[ms.instrRow, { marginTop: 8 }]}>
-                <Text style={ms.instrEmoji}>⏱</Text>
-                <Text style={[ms.instrLabel, timeLeft <= 10 && ms.urgentTimeTxt]}>
+                <Text style={ms.emoji}>⏱</Text>
+                <Text style={[ms.instrLbl, { color: timeLeft <= 10 ? t.lose : t.textPrimary, fontWeight: timeLeft <= 10 ? '900' : '700' }]}>
                   Time left: {timeLeft}s
                 </Text>
               </View>
@@ -467,259 +330,143 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
           </View>
         )}
 
-        {/* Main Board */}
-        <Animated.View pointerEvents="auto" style={[ms.boardContainer, animatedBoardStyle, { alignSelf: 'center' }]}>
-          <View 
-            key={`board-${gridSize}`}
-            style={[ms.board, { width: BOARD_WIDTH, height: BOARD_WIDTH }]}
-          >
+        {/* Board */}
+        <Animated.View style={[ms.boardWrap, animBoard, { alignSelf: 'center' }, t.glow(t.primary, 20) as any]}>
+          <View style={[ms.board, { width: BOARD_WIDTH, height: BOARD_WIDTH, backgroundColor: t.card, borderColor: t.primary + '55' }]}>
             {board.map((cell, idx) => (
-              <Cell 
-                key={idx} 
-                index={idx} 
-                value={cell}
-                isSelected={selectedIdx === idx} 
-                isWinCell={winSet.has(idx)}
-                isOtherDimmed={!!winner}
-                size={cellSize}
-                fontSize={boardFontSize} 
+              <Cell key={idx} index={idx} value={cell} isSelected={selectedIdx === idx}
+                isWinCell={winSet.has(idx)} isOtherDimmed={!!winner}
+                size={cellSize} fontSize={bFontSize}
                 disabled={!myTurn || status !== 'playing'}
-                boardSize={gridSize}
-                onPress={handleCell}
-                onLayout={handleTileLayout}
+                boardSize={gridSize} onPress={handleCell} onLayout={handleTileLayout}
+                colors={cellColors}
               />
             ))}
-            <StrikeLine winLine={winningLine || null} layouts={tileLayouts} />
+            <StrikeLine winLine={winningLine ?? null} layouts={tileLayouts} lineColor={t.warning} />
           </View>
         </Animated.View>
 
         {/* HUD Info */}
         <View style={ms.hudInfo}>
-          <View style={ms.ruleTag}>
-            <Text style={ms.ruleTxt}>{gridSize}x{gridSize} • {winLength} in a row</Text>
+          <View style={[ms.ruleTag, { backgroundColor: t.card, borderColor: t.border }]}>
+            <Text style={[ms.ruleTxt, { color: t.textSecondary }]}>{gridSize}×{gridSize} • {winLength} in a row</Text>
           </View>
-          <Text style={[ms.statusMain, { color: myTurn ? Colors.neonPurple : Colors.textSecondary }]}> 
-            {statusLabel}
+          <Text style={[ms.statusMain, { color: myTurn ? t.primary : t.textSecondary }]}>{statusLabel}</Text>
+          <Text style={[ms.phaseMain, { color: t.primary, textShadowColor: isCalm ? 'transparent' : t.primary, textShadowRadius: isCalm ? 0 : 8 }]}>
+            {phase === 'placement' ? 'PLACEMENT' : 'MOVEMENT'}
           </Text>
-          <Text style={ms.phaseMain}>{phase === 'placement' ? 'PLACEMENT' : 'MOVEMENT'}</Text>
         </View>
-
       </View>
 
       {/* Result Overlay */}
-      {(status === 'finished' || status === 'abandoned') && (
-        <Animated.View style={animatedOverlayStyle}>
-          <Animated.View style={[ms.resultBanner, animatedResultStyle]}>
-            <Text style={[
-              ms.resultTitle, 
-              { color: isWinner ? Colors.neonYellow : isLoser ? Colors.neonPink : Colors.textPrimary }
-            ]}>
-              {match?.endReason === 'timeout' ? "TIME'S UP!" 
-                : status === 'abandoned' && isWinner ? 'OPPONENT LEFT' 
-                : isWinner ? 'VICTORY!' 
-                : isLoser ? 'DEFEAT' 
-                : 'DRAW'}
+      {(status === 'finished' || status === 'abandoned' || status === 'waiting_next_round') && (
+        <Animated.View style={animOverlay}>
+          <Animated.View style={[ms.modal, modalStyle, animResult]}>
+            <Text style={[ms.resultTitle, { color: resultTitleColor }]}>
+              {match?.endReason === 'timeout' ? "TIME'S UP!"
+                : status === 'abandoned' && isWinner ? 'OPPONENT LEFT'
+                : isWinner ? 'VICTORY!' : isLoser ? 'DEFEAT' : 'DRAW'}
             </Text>
             {match?.endReason === 'timeout' && (
-              <Text style={[ms.nextRoundTxt, { color: isWinner ? Colors.neonYellow : Colors.neonPink, marginBottom: 10 }]}>
+              <Text style={[ms.subTxt, { color: isWinner ? t.win : t.lose, marginBottom: 10 }]}>
                 {isWinner ? 'Opponent timed out!' : 'You ran out of time!'}
               </Text>
             )}
-            {xpGained && (
-              <View style={ms.xpBadge}>
-                <Text style={ms.xpTxt}>+{xpGained} XP</Text>
+            {xpGained != null && (
+              <View style={[ms.xpBadge, { backgroundColor: t.warning + '18', borderColor: t.warning }]}>
+                <Text style={[ms.xpTxt, { color: t.warning }]}>+{xpGained} XP</Text>
               </View>
             )}
-
             <View style={{ marginTop: 20, width: '100%', gap: 12 }}>
-              {match?.endReason !== 'timeout_quit' && match?.endReason !== 'resign' ? (
-                <NeonButton 
-                  title="NEXT ROUND" 
-                  onPress={() => {
-                    console.log("[DEBUG] TRYING TO START NEXT ROUND");
-                    if (match?.status !== 'finished' && !gameEnded) {
-                      startNextRound(matchId);
-                    }
-                  }}
-                  color={Colors.neonPurple}
-                />
-              ) : null}
-              
-              <NeonButton 
-                title="EXIT TO LOBBY" 
-                onPress={() => {
-                  console.log("[DEBUG] EXIT TO LOBBY CLICKED");
-                  navigation.dispatch(
-                    CommonActions.reset({
-                      index: 0,
-                      routes: [
-                        {
-                          name: 'Main',
-                          params: { screen: 'Home' },
-                        },
-                      ],
-                    })
-                  );
-                }}
-                color={Colors.textSecondary}
-                variant="outline"
-              />
+              {match?.endReason !== 'resign' && (
+                match?.readyPlayers?.includes(myUid) ? (
+                  <NeonButton title="WAITING FOR OPPONENT..." variant="secondary" onPress={() => {}} disabled />
+                ) : (
+                  <NeonButton title="NEXT ROUND" variant="primary"
+                    onPress={() => setReadyForNextRound(matchId, myUid)}
+                  />
+                )
+              )}
+              <NeonButton title="EXIT TO LOBBY" variant="secondary" onPress={exitToLobby} />
             </View>
           </Animated.View>
         </Animated.View>
       )}
 
-      <View pointerEvents="none" style={ms.confettiOverlay}>
-        <NeonConfetti show={showConfetti} onComplete={() => setShowConfetti(false)} />
-      </View>
-
-      {/* Timeout Decision Modal */}
+      {/* Timeout Modal */}
       {status === 'timeout_pending' && (
-        <Animated.View style={animatedOverlayStyle}>
-          <Animated.View style={[ms.resultBanner, animatedResultStyle]}>
-            <Text style={[ms.resultTitle, { color: Colors.neonPink }]}>TIME'S UP</Text>
-            
+        <Animated.View style={animOverlay}>
+          <Animated.View style={[ms.modal, modalStyle, animResult]}>
+            <Text style={[ms.resultTitle, { color: t.lose }]}>TIME'S UP</Text>
             {match?.timedOutPlayer === playerSide ? (
               <>
-                <Text style={[ms.nextRoundTxt, { marginBottom: 20, textAlign: 'center' }]}>
+                <Text style={[ms.subTxt, { marginBottom: 20, textAlign: 'center', color: t.textSecondary }]}>
                   You didn't make a move in time. Continue or end the match?
                 </Text>
                 <View style={{ gap: 15, width: '100%' }}>
-                  <NeonButton 
-                    title="CONTINUE" 
-                    onPress={() => continueMatch(matchId)}
-                    color={Colors.neonYellow}
-                  />
-                  <NeonButton 
-                    title="END MATCH" 
-                    onPress={handleEndMatch}
-                    color={Colors.neonPink}
-                    variant="outline"
-                  />
+                  <NeonButton title="CONTINUE"   variant="primary"  onPress={() => continueMatch(matchId)} />
+                  <NeonButton title="END MATCH"  variant="danger"   onPress={handleEndMatch} />
                 </View>
               </>
             ) : (
               <>
-                <Text style={[ms.nextRoundTxt, { textAlign: 'center' }]}>
+                <Text style={[ms.subTxt, { textAlign: 'center', color: t.textSecondary }]}>
                   Waiting for {opponentName} to decide...
                 </Text>
                 <View style={{ marginTop: 25 }}>
-                  <ActivityIndicator color={Colors.neonPurple} size="large" />
+                  <ActivityIndicator color={t.primary} size="large" />
                 </View>
               </>
             )}
           </Animated.View>
         </Animated.View>
       )}
+
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 999 }]}>
+        <NeonConfetti show={showConfetti} onComplete={() => setShowConfetti(false)} />
+      </View>
     </ScreenWrapper>
   );
 }
 
 const ms = StyleSheet.create({
-  confettiOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 999, elevation: 999 },
-
-  header: {
-    flexDirection: 'row', alignItems: 'center', width: '100%',
-    paddingHorizontal: 16, marginTop: 10, marginBottom: 20, gap: 10,
-  },
-  backBtn: {
-    width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.card,
-    justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1, borderColor: Colors.neonPink + '66',
-  },
-  roundBadge: {
-    backgroundColor: Colors.neonPurple + '22', paddingHorizontal: 14, paddingVertical: 8,
-    borderRadius: 12, borderWidth: 1, borderColor: Colors.neonPurple,
-    ...glow(Colors.neonPurple, 6),
-  },
-  roundTxt: { color: Colors.neonPurple, fontWeight: '900', fontSize: 13, letterSpacing: 1.5 },
-  matchCode: {
-    flex: 1, textAlign: 'right', color: Colors.textSecondary,
-    fontWeight: '700', fontSize: 11, letterSpacing: 1,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginTop: 10, marginBottom: 20, gap: 10 },
+  backBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
+  badge: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
+  badgeTxt: { fontWeight: '900', fontSize: 13, letterSpacing: 1.5 },
+  matchCode: { flex: 1, textAlign: 'right', fontWeight: '700', fontSize: 11, letterSpacing: 1 },
 
   content: { marginTop: 20, gap: 20, paddingHorizontal: 16 },
-  players: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 15, width: '100%',
-  },
-  playerCard: {
-    flex: 1, backgroundColor: Colors.card, borderRadius: 20, padding: 15,
-    alignItems: 'center', borderWidth: 1, borderColor: Colors.border,
-  },
-  activeCard: {
-    borderColor: Colors.neonYellow, borderWidth: 2,
-    shadowColor: Colors.neonYellow, shadowOpacity: 0.75, shadowRadius: 20, elevation: 12,
-  },
+  players: { flexDirection: 'row', alignItems: 'center' },
+  playerCard: { flex: 1, borderRadius: 20, padding: 15, alignItems: 'center', borderWidth: 1 },
   symbol: { fontSize: 28, fontWeight: '900', marginBottom: 5 },
-  score: { fontSize: 26, fontWeight: '900', color: Colors.textPrimary },
-  streak: { fontSize: 11, color: Colors.neonYellow, fontWeight: '900', marginTop: 3 },
-  name: { fontSize: 11, color: Colors.textSecondary, marginTop: 5, fontWeight: '700', letterSpacing: 0.5 },
-  vsContainer: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: '#160B28',
-    justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1, borderColor: Colors.neonPurple + '66',
-    ...glow(Colors.neonPurple, 5),
-  },
-  vsTxt: { color: Colors.neonPurple, fontWeight: '900', fontSize: 12 },
+  score: { fontSize: 26, fontWeight: '900' },
+  streak: { fontSize: 11, fontWeight: '900', marginTop: 3 },
+  name: { fontSize: 11, marginTop: 5, fontWeight: '700', letterSpacing: 0.5 },
+  vsContainer: { width: 70, alignItems: 'center', justifyContent: 'center' },
+  vsCircle: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
+  vsTxt: { fontWeight: '900', fontSize: 12 },
 
-  boardContainer: {
-    shadowColor: Colors.neonPurple, shadowOpacity: 0.35, shadowRadius: 28, elevation: 16,
-  },
-  board: {
-    flex: 0, flexDirection: 'row', flexWrap: 'wrap', backgroundColor: Colors.card,
-    borderRadius: 20, overflow: 'hidden',
-    borderWidth: 2, borderColor: Colors.neonPurple + '55',
-  },
-  cellPress: {},
-  cellInner: {
-    width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 0.5, borderColor: Colors.border,
-  },
+  boardWrap: {},
+  board: { flexDirection: 'row', flexWrap: 'wrap', borderRadius: 20, overflow: 'hidden', borderWidth: 2 },
+  cellInner: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', borderWidth: 0.5 },
 
   hudInfo: { alignItems: 'center', marginTop: 10 },
-  ruleTag: {
-    backgroundColor: Colors.card, paddingHorizontal: 14, paddingVertical: 6,
-    borderRadius: 10, marginBottom: 12,
-    borderWidth: 1, borderColor: Colors.border,
-  },
-  ruleTxt: { color: Colors.textSecondary, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  ruleTag: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 10, marginBottom: 12, borderWidth: 1 },
+  ruleTxt: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   statusMain: { fontSize: 20, fontWeight: '900', letterSpacing: 1, marginBottom: 5 },
-  phaseMain: {
-    fontSize: 10, color: Colors.neonPurple, fontWeight: '900', letterSpacing: 3,
-    textShadowColor: Colors.neonPurple, textShadowRadius: 8,
-  },
+  phaseMain: { fontSize: 10, fontWeight: '900', letterSpacing: 3, textShadowOffset: { width: 0, height: 0 } },
 
-  resultBanner: {
-    width: '100%',
-    backgroundColor: '#130820', borderRadius: 24, padding: 28,
-    alignItems: 'center', borderWidth: 2, borderColor: Colors.neonPurple,
-    ...glow(Colors.neonPurple, 22),
-  },
-  resultTitle: { fontSize: 34, fontWeight: '900', marginBottom: 14, letterSpacing: 2 },
-  xpBadge: {
-    backgroundColor: 'rgba(255,214,10,0.12)', borderColor: Colors.neonYellow,
-    borderWidth: 1, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 14, marginBottom: 14,
-    ...glow(Colors.neonYellow, 6),
-  },
-  xpTxt: { color: Colors.neonYellow, fontWeight: '900', fontSize: 18 },
-  nextRoundTxt: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
-
-  instructionCard: {
-    width: '100%', backgroundColor: Colors.card, borderRadius: 20, padding: 15,
-    borderWidth: 1, borderColor: Colors.border,
-    ...glow(Colors.neonPurple, 4),
-  },
+  infoCard: { borderRadius: 20, padding: 15, borderWidth: 1 },
   instrRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5, gap: 10 },
-  instrEmoji: { fontSize: 17 },
-  instrLabel: { color: Colors.textPrimary, fontSize: 13, fontWeight: '700' },
-  instrHintBox: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.border },
-  instrHintTxt: { color: Colors.neonPurple, fontSize: 13, fontWeight: '900' },
-  urgentTimeTxt: {
-    color: Colors.neonPink,
-    fontWeight: '800',
-    textShadowColor: Colors.neonPink,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
-  },
+  emoji: { fontSize: 17 },
+  instrLbl: { fontSize: 13, fontWeight: '700' },
+  hintBox: { marginTop: 10, paddingTop: 10, borderTopWidth: 1 },
+  hintTxt: { fontSize: 13, fontWeight: '900' },
+
+  modal: { width: '100%', borderRadius: 24, padding: 28, alignItems: 'center' },
+  resultTitle: { fontSize: 34, fontWeight: '900', marginBottom: 14, letterSpacing: 2 },
+  subTxt: { fontSize: 13, fontWeight: '600' },
+  xpBadge: { borderWidth: 1, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 14, marginBottom: 14 },
+  xpTxt: { fontWeight: '900', fontSize: 18 },
 });

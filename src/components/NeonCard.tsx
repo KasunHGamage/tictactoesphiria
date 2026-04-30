@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Colors, Spacing, glow } from '../../constants/theme';
+import { useAppTheme } from '../context/ThemeContext';
+import { Spacing } from '../../constants/themes';
 
 interface Props {
   children?: React.ReactNode;
@@ -10,14 +11,18 @@ interface Props {
 }
 
 const NeonCard: React.FC<Props> = ({
-  children, style, glowColor = Colors.neonPurple, noBorder = false,
+  children, style, glowColor, noBorder = false,
 }) => {
+  const t = useAppTheme();
+  const color = glowColor ?? t.primary;
+
   return (
     <View
       style={[
         styles.card,
-        !noBorder && { borderColor: glowColor + '55' },
-        glow(glowColor, 8) as any,
+        { backgroundColor: t.card, borderColor: t.border },
+        !noBorder && { borderColor: color + '55' },
+        t.glow(color, 8) as any,
         style,
       ]}
     >
@@ -28,10 +33,8 @@ const NeonCard: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: Colors.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: Colors.border,
     padding: Spacing.md,
   },
 });

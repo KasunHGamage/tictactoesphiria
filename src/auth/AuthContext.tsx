@@ -5,6 +5,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../services/firebase';
+import { AppState } from 'react-native';
+import { updateUserLastSeen } from '../services/userService';
 
 interface AuthContextType {
   user: User | null;
@@ -30,6 +32,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const updatePresence = () => {
+      updateUserLastSeen(user.uid).catch(err => console.warn('[Presence]', err));
+    };
+
+    // Immediate update on login/mount
+    updatePresence();
+
+    // Periodic heartbeat every 10 seconds while active
+    const intervalId = setInterval(() => {
+      if (AppState.currentState === 'active') {
+        updatePresence();
+      }
+    }, 10000);
+
+    // Update immediately on app state changes (e.g., backgrounding)
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active' || nextAppState === 'background') {
+        updatePresence();
+      }
+    });
+
+    return () => {
+      clearInterval(intervalId);
+      subscription.remove();
+    };
+  }, [user]);
 
   return (
     <AuthContext.Provider value={{ user, loading }}>

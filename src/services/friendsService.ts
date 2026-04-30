@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────
-//  friendsService.ts — Social and Friends logic
+//  friendsService.ts — Social and Friends logic (re-save)
 // ─────────────────────────────────────────────
 
 import { 
@@ -12,6 +12,7 @@ import {
   onSnapshot, 
   serverTimestamp, 
   deleteDoc,
+  getDocs,
   Unsubscribe
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -21,6 +22,7 @@ export interface FriendRequest {
   from: string;
   fromName: string;
   to: string;
+  toName?: string;
   status: 'pending' | 'accepted' | 'rejected';
   createdAt: any;
 }
@@ -28,11 +30,12 @@ export interface FriendRequest {
 /**
  * Send a friend request to another user.
  */
-export async function sendFriendRequest(fromUid: string, fromName: string, toUid: string): Promise<void> {
+export async function sendFriendRequest(fromUid: string, fromName: string, toUid: string, toName?: string): Promise<void> {
   const request: Omit<FriendRequest, 'id'> = {
     from: fromUid,
     fromName,
     to: toUid,
+    toName,
     status: 'pending',
     createdAt: serverTimestamp(),
   };
@@ -75,6 +78,18 @@ export function listenToRequests(uid: string, onUpdate: (reqs: FriendRequest[]) 
 }
 
 /**
+ * Listen to sent friend requests.
+ */
+export function watchSentRequests(uid: string, onUpdate: (reqs: FriendRequest[]) => void): Unsubscribe {
+  const q = query(collection(db, 'friendRequests'), where('from', '==', uid), where('status', '==', 'pending'));
+  
+  return onSnapshot(q, (snap) => {
+    const reqs = snap.docs.map(d => ({ id: d.id, ...d.data() } as FriendRequest));
+    onUpdate(reqs);
+  });
+}
+
+/**
  * Listen to friend list.
  */
 export function listenToFriends(uid: string, onUpdate: (friendUids: string[]) => void): Unsubscribe {
@@ -87,4 +102,21 @@ export function listenToFriends(uid: string, onUpdate: (friendUids: string[]) =>
     });
     onUpdate(friendUids);
   });
+}
+
+/**
+ * Remove a friend relationship.
+ */
+export async function removeFriend(uid1: string, uid2: string): Promise<void> {
+  const q = query(
+    collection(db, 'friends'), 
+    where('users', 'array-contains', uid1)
+  );
+  
+  const snap = await getDocs(q);
+  const deletePromises = snap.docs
+    .filter(d => (d.data().users as string[]).includes(uid2))
+    .map(d => deleteDoc(d.ref));
+    
+  await Promise.all(deletePromises);
 }

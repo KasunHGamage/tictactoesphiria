@@ -6,10 +6,11 @@ import React from 'react';
 import { NavigationContainer, createNavigationContainerRef, StackActions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { ActivityIndicator, View, Platform } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 
 import { useAuth } from '../auth/AuthContext';
 import { useMatchInvitations } from '../hooks/useMatchInvitations';
+import { useAppTheme } from '../context/ThemeContext';
 import LoginScreen from '../screens/LoginScreen';
 import SignupScreen from '../screens/SignupScreen';
 import HomeScreen from '../screens/HomeScreen';
@@ -25,13 +26,13 @@ import GridSizeStep from '../screens/setup/GridSizeStep';
 import { Ionicons } from '@expo/vector-icons';
 
 const Stack = createNativeStackNavigator();
-const Tab = createBottomTabNavigator();
+const Tab   = createBottomTabNavigator();
 const navigationRef = createNavigationContainerRef();
 
 // ── Tab Navigator ────────────────────────────────────────────────
 
 function MainTabs() {
-  const isIOS = Platform.OS === 'ios';
+  const t = useAppTheme();
 
   return (
     <Tab.Navigator
@@ -39,27 +40,19 @@ function MainTabs() {
         headerShown: false,
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: any;
-
-          if (route.name === 'Home') {
-            iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'Play') {
-            iconName = focused ? 'game-controller' : 'game-controller-outline';
-          } else if (route.name === 'Friends') {
-            iconName = focused ? 'people' : 'people-outline';
-          } else if (route.name === 'Leaders') {
-            iconName = focused ? 'trophy' : 'trophy-outline';
-          } else if (route.name === 'Profile') {
-            iconName = focused ? 'person' : 'person-outline';
-          }
-
+          if      (route.name === 'Home')    iconName = focused ? 'home'            : 'home-outline';
+          else if (route.name === 'Play')    iconName = focused ? 'game-controller' : 'game-controller-outline';
+          else if (route.name === 'Friends') iconName = focused ? 'people'          : 'people-outline';
+          else if (route.name === 'Leaders') iconName = focused ? 'trophy'          : 'trophy-outline';
+          else if (route.name === 'Profile') iconName = focused ? 'person'          : 'person-outline';
           return <Ionicons name={iconName} size={24} color={color} />;
         },
-        tabBarActiveTintColor: '#9D4EDD',
-        tabBarInactiveTintColor: '#3A3A5C',
+        tabBarActiveTintColor:   t.tabActive,
+        tabBarInactiveTintColor: t.tabInactive,
         tabBarStyle: {
-          backgroundColor: '#0A0A14',
+          backgroundColor: t.tabBg,
           borderTopWidth: 1,
-          borderTopColor: '#2B2B44',
+          borderTopColor: t.tabBorder,
           height: 70,
           paddingBottom: 12,
           paddingTop: 10,
@@ -67,10 +60,10 @@ function MainTabs() {
           borderTopRightRadius: 28,
           position: 'absolute',
           elevation: 0,
-          shadowColor: '#9D4EDD',
-          shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.25,
-          shadowRadius: 18,
+          shadowColor:   t.primary,
+          shadowOffset:  { width: 0, height: -4 },
+          shadowOpacity: t.mode === 'arcade' ? 0.25 : 0.08,
+          shadowRadius:  18,
         },
         tabBarLabelStyle: {
           fontSize: 10,
@@ -80,8 +73,8 @@ function MainTabs() {
         },
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Play" component={PlayScreen} />
+      <Tab.Screen name="Home"    component={HomeScreen} />
+      <Tab.Screen name="Play"    component={PlayScreen} />
       <Tab.Screen name="Friends" component={FriendsScreen} />
       <Tab.Screen name="Leaders" component={LeaderboardScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
@@ -93,6 +86,7 @@ function MainTabs() {
 
 export default function RootNavigator() {
   const { user, loading } = useAuth();
+  const t = useAppTheme();
 
   // Global listener for accepted invitations
   useMatchInvitations((matchId, playerSide) => {
@@ -102,11 +96,9 @@ export default function RootNavigator() {
         matchId,
         playerSide,
         myUid: user.uid,
-        myName: user.displayName || 'Player'
+        myName: user.displayName || 'Player',
       };
-
       if (currentRoute?.name === 'MultiplayerGame') {
-        // If already in a game, REPLACE the stack to ensure fresh state
         navigationRef.dispatch(StackActions.replace('MultiplayerGame', params));
       } else {
         // @ts-ignore
@@ -117,8 +109,8 @@ export default function RootNavigator() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#07070D', justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator color="#9D4EDD" size="large" />
+      <View style={{ flex: 1, backgroundColor: t.bg, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator color={t.primary} size="large" />
       </View>
     );
   }
@@ -128,15 +120,15 @@ export default function RootNavigator() {
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
           <>
-            <Stack.Screen name="Main" component={MainTabs} />
+            <Stack.Screen name="Main"            component={MainTabs} />
             <Stack.Screen name="MultiplayerGame" component={MultiplayerGameScreen} />
-            <Stack.Screen name="SinglePlayer" component={GameScreen} />
+            <Stack.Screen name="SinglePlayer"    component={GameScreen} />
             <Stack.Screen name="SetupDifficulty" component={DifficultyStep} />
-            <Stack.Screen name="SetupGridSize" component={GridSizeStep} />
+            <Stack.Screen name="SetupGridSize"   component={GridSizeStep} />
           </>
         ) : (
           <>
-            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Login"  component={LoginScreen} />
             <Stack.Screen name="Signup" component={SignupScreen} />
           </>
         )}

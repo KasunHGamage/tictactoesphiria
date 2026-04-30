@@ -1,53 +1,92 @@
 import React from 'react';
 import { Text, StyleSheet, TextProps } from 'react-native';
-import { Colors, Typography, textGlow } from '../../constants/theme';
+import { useAppTheme } from '../context/ThemeContext';
+import { Typography } from '../../constants/themes';
 
-export const NeonTitle: React.FC<TextProps> = ({ children, style, ...rest }) => (
-  <Text style={[styles.title, style]} {...rest}>{children}</Text>
-);
+export const NeonTitle: React.FC<TextProps> = ({ children, style, ...rest }) => {
+  const t = useAppTheme();
+  return (
+    <Text
+      style={[
+        styles.titleBase,
+        { color: t.primary, ...(t.textGlow(t.primary) as any) },
+        style,
+      ]}
+      {...rest}
+    >
+      {children}
+    </Text>
+  );
+};
 
-export const NeonLabel: React.FC<TextProps> = ({ children, style, ...rest }) => (
-  <Text style={[styles.label, style]} {...rest}>{children}</Text>
-);
+export const NeonLabel: React.FC<TextProps> = ({ children, style, ...rest }) => {
+  const t = useAppTheme();
+  return (
+    <Text
+      style={[styles.labelBase, { color: t.textSecondary }, style]}
+      {...rest}
+    >
+      {children}
+    </Text>
+  );
+};
 
-export const NeonX: React.FC<TextProps> = ({ children, style, ...rest }) => (
-  <Text style={[styles.x, style]} {...rest}>{children}</Text>
-);
+export const NeonX: React.FC<TextProps> = ({ children, style, ...rest }) => {
+  const t = useAppTheme();
+  return (
+    <Text
+      style={[
+        styles.piece,
+        {
+          color: t.accent,
+          textShadowColor: t.mode === 'arcade' ? t.accent : 'transparent',
+          textShadowOffset: { width: 0, height: 0 },
+          textShadowRadius: t.mode === 'arcade' ? 14 : 0,
+        },
+        style,
+      ]}
+      {...rest}
+    >
+      {children}
+    </Text>
+  );
+};
 
-export const NeonO: React.FC<TextProps> = ({ children, style, ...rest }) => (
-  <Text style={[styles.o, style]} {...rest}>{children}</Text>
-);
+export const NeonO: React.FC<TextProps> = ({ children, style, ...rest }) => {
+  const t = useAppTheme();
+  return (
+    <Text
+      style={[
+        styles.piece,
+        {
+          color: t.secondary,
+          textShadowColor: t.mode === 'arcade' ? t.secondary : 'transparent',
+          textShadowOffset: { width: 0, height: 0 },
+          textShadowRadius: t.mode === 'arcade' ? 14 : 0,
+        },
+        style,
+      ]}
+      {...rest}
+    >
+      {children}
+    </Text>
+  );
+};
 
 const styles = StyleSheet.create({
-  title: {
+  titleBase: {
     fontSize: Typography.titleSize,
-    color: Colors.neonPurple,
     fontWeight: '900',
     letterSpacing: 1,
     fontFamily: Typography.fontFamily,
-    ...(textGlow(Colors.neonPurple) as any),
   },
-  label: {
+  labelBase: {
     fontSize: Typography.labelSize,
-    color: Colors.textSecondary,
     fontWeight: '900',
     letterSpacing: 2,
     fontFamily: Typography.fontFamily,
   },
-  x: {
-    color: Colors.neonPink,
-    textShadowColor: Colors.neonPink,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 14,
-    fontSize: 44,
-    fontWeight: '900',
-    fontFamily: Typography.fontFamily,
-  },
-  o: {
-    color: Colors.neonBlue,
-    textShadowColor: Colors.neonBlue,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 14,
+  piece: {
     fontSize: 44,
     fontWeight: '900',
     fontFamily: Typography.fontFamily,

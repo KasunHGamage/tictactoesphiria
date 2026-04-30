@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import ConfettiCannon from 'react-native-confetti-cannon';
-import { Colors } from '../../constants/theme';
+import { useAppTheme } from '../context/ThemeContext';
 
 const NeonConfetti: React.FC<{ show: boolean; onComplete?: () => void }> = ({ show, onComplete }) => {
+  const t = useAppTheme();
   const [active, setActive] = useState(show);
 
   useEffect(() => {
@@ -17,7 +18,7 @@ const NeonConfetti: React.FC<{ show: boolean; onComplete?: () => void }> = ({ sh
       <ConfettiCannon
         count={80}
         origin={{ x: -10, y: 0 }}
-        colors={[Colors.neonPink, Colors.neonBlue, Colors.neonYellow, Colors.neonGreen, Colors.neonPurple]}
+        colors={[t.primary, t.secondary, t.accent, t.warning, t.success]}
         fadeOut
         onAnimationEnd={() => {
           setActive(false);
