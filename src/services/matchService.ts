@@ -227,16 +227,67 @@ export async function resignMatch(matchId: string, resigningUid: string): Promis
     const snap = await tx.get(matchRef(matchId));
     if (!snap.exists()) return;
     const data = snap.data() as MatchDocument;
-
     if (data.status !== 'playing') return;
-
     const winner = resigningUid === data.playerX.uid ? 'O' : 'X';
-    
     tx.update(matchRef(matchId), { 
-      status: 'abandoned', 
-      winner,
-      endReason: 'resign',
+      status: 'abandoned', winner, endReason: 'resign',
       updatedAt: serverTimestamp() 
     });
+  });
+}
+
+/**
+ * Either player can call this to immediately end the match from ANY active state.
+ * The caller is treated as the forfeiting side.
+ */
+export async function abandonMatch(matchId: string, leavingUid: string): Promise<void> {
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(matchRef(matchId));
+    if (!snap.exists()) return;
+    const data = snap.data() as MatchDocument;
+    if (!['playing', 'timeout_pending', 'waiting'].includes(data.status)) return;
+
+    const winner: Player = leavingUid === data.playerX.uid ? 'O' : 'X';
+    const winnerUid = winner === 'X' ? data.playerX.uid : data.playerO?.uid;
+
+    const updates: any = {
+      status: 'abandoned',
+      winner,
+      endReason: 'abandoned',
+      updatedAt: serverTimestamp(),
+    };
+    if (winnerUid) {
+      updates[`scores.${winnerUid}`]    = (data.scores?.[winnerUid] || 0) + 1;
+      updates[`winStreaks.${winnerUid}`] = (data.winStreaks?.[winnerUid] || 0) + 1;
+      updates[`winStreaks.${leavingUid}`] = 0;
+    }
+    tx.update(matchRef(matchId), updates);
+  });
+}
+
+/**
+ * Called by the PRESENT player when the opponent has gone offline.
+ * Present player wins.
+ */
+export async function winByAbsence(matchId: string, winnerUid: string): Promise<void> {
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(matchRef(matchId));
+    if (!snap.exists()) return;
+    const data = snap.data() as MatchDocument;
+    if (!['playing', 'timeout_pending'].includes(data.status)) return;
+
+    const winner: Player = winnerUid === data.playerX.uid ? 'X' : 'O';
+    const loserUid = winnerUid === data.playerX.uid ? data.playerO?.uid : data.playerX.uid;
+
+    const updates: any = {
+      status: 'abandoned',
+      winner,
+      endReason: 'opponent_offline',
+      updatedAt: serverTimestamp(),
+      [`scores.${winnerUid}`]:     (data.scores?.[winnerUid] || 0) + 1,
+      [`winStreaks.${winnerUid}`]:  (data.winStreaks?.[winnerUid] || 0) + 1,
+    };
+    if (loserUid) updates[`winStreaks.${loserUid}`] = 0;
+    tx.update(matchRef(matchId), updates);
   });
 }

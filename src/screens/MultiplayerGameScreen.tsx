@@ -18,7 +18,9 @@ import { Board, Player } from '../game/gameTypes';
 import { canPlace, getWinningLine, getPlayerPieces } from '../game/gameEngine';
 import { useMatch } from '../hooks/useMatch';
 import { recordMatchResult } from '../services/userService';
-import { triggerTimeout, continueMatch, forfeitMatch, setReadyForNextRound, startNextRound } from '../services/matchService';
+import { triggerTimeout, continueMatch, forfeitMatch, setReadyForNextRound, startNextRound, abandonMatch, winByAbsence } from '../services/matchService';
+import { onSnapshot, doc } from 'firebase/firestore';
+import { db } from '../services/firebase';
 
 // ── StrikeLine ────────────────────────────────────────────────────
 function StrikeLine({ winLine, layouts, lineColor }: {
@@ -119,6 +121,11 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
   const [xpGained,       setXpGained]       = useState<number | null>(null);
   const [timeLeft,       setTimeLeft]       = useState<number | null>(null);
   const [gameEnded,      setGameEnded]      = useState(false);
+  const [opponentOffline, setOpponentOffline] = useState(false);
+
+  // Stores raw lastSeen from Firestore — updated by listener, read by interval
+  const opponentLastSeenRef    = useRef<number>(0);
+  const opponentLastSeenLoaded = useRef<boolean>(false); // don't flag offline before first value
 
   const boardScale    = useSharedValue(1);
   const resultScale   = useSharedValue(0.8);
@@ -127,11 +134,31 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
 
   const isEndingMatch = useRef(false);
 
+  // End match from EITHER side — caller forfeits
   const handleEndMatch = async () => {
-    if (isEndingMatch.current || match?.status === 'finished') return;
+    if (isEndingMatch.current || match?.status === 'finished' || match?.status === 'abandoned') return;
     isEndingMatch.current = true;
-    try { await forfeitMatch(matchId, playerSide); setGameEnded(true); }
+    try { await abandonMatch(matchId, myUid); setGameEnded(true); }
     catch (err) { console.error(err); isEndingMatch.current = false; }
+  };
+
+  // Present player claims victory when opponent goes offline
+  const handleClaimVictory = async () => {
+    if (isEndingMatch.current) return;
+    isEndingMatch.current = true;
+    try { await winByAbsence(matchId, myUid); }
+    catch (err) { console.error(err); isEndingMatch.current = false; }
+  };
+
+  const handleEndMatchConfirm = () => {
+    Alert.alert(
+      'End Match?',
+      'This will forfeit the match. Your opponent will be declared the winner.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'End Match', style: 'destructive', onPress: handleEndMatch },
+      ]
+    );
   };
 
   const handleTileLayout = useCallback((index: number, layout: any) =>
@@ -141,6 +168,50 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
     setSelectedIdx(null); setResultRecorded(false); setShowConfetti(false); setXpGained(null);
     boardScale.value = 1; resultScale.value = 0.8; resultOpacity.value = 0;
   }, []);
+
+  // ── Opponent presence monitoring ────────────────────────────────────────────
+  // Part 1: Firestore listener — keeps lastSeen ref up to date
+  useEffect(() => {
+    if (!oppUid) return;
+    const unsub = onSnapshot(doc(db, 'users', oppUid), (snap) => {
+      if (!snap.exists()) return;
+      const lastSeen: number = snap.data().lastSeen ?? 0;
+      opponentLastSeenRef.current = lastSeen;
+      opponentLastSeenLoaded.current = true; // mark: we have a real value
+    });
+    return unsub;
+  }, [oppUid]);
+
+  // Part 2: Interval checker — evaluates staleness every 3s
+  useEffect(() => {
+    const ACTIVE = ['playing', 'timeout_pending'];
+    const check = () => {
+      // Don't flag offline until Firestore has given us a real value
+      if (!opponentLastSeenLoaded.current) return;
+      if (!match || !ACTIVE.includes(match.status ?? '')) {
+        setOpponentOffline(false);
+        return;
+      }
+      // 20s = 2× the 10s heartbeat interval — one missed beat = offline
+      const stale = Date.now() - opponentLastSeenRef.current > 20_000;
+      setOpponentOffline(stale);
+    };
+    check();
+    const id = setInterval(check, 3000);
+    return () => clearInterval(id);
+  }, [match?.status]);
+
+  // ── Waiting state watchdog — abandon if opponent never joins in 45s ─────────
+  useEffect(() => {
+    if (match?.status !== 'waiting' || playerSide !== 'X') return;
+    const timeout = setTimeout(async () => {
+      if (match?.status === 'waiting') {
+        // Only playerX can see this (the sender)
+        await abandonMatch(matchId, myUid).catch(console.error);
+      }
+    }, 45_000);
+    return () => clearTimeout(timeout);
+  }, [match?.status]);
 
   useEffect(() => {
     turnPulse.value = withRepeat(
@@ -228,9 +299,9 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
     await applyMove({ type: 'move', fromIndex: from, toIndex: index });
   }, [match, myTurn, phase, board, selectedIdx, playerSide, matchId]);
 
-  const handleResign = () => Alert.alert('Exit Match?', 'Session will be saved.', [
+  const handleResign = () => Alert.alert('End Match?', 'This will forfeit — your opponent wins.', [
     { text: 'Cancel', style: 'cancel' },
-    { text: 'Exit', style: 'destructive', onPress: () => resign().then(() => navigation.goBack()) },
+    { text: 'End Match', style: 'destructive', onPress: handleEndMatch },
   ]);
 
   const statusLabel = !match ? 'Connecting…'
@@ -267,8 +338,8 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
 
       {/* Header */}
       <View style={ms.header}>
-        <Pressable onPress={handleResign} style={[ms.backBtn, { backgroundColor: t.card, borderColor: t.accent + '66' }]}>
-          <Ionicons name="close" size={24} color={t.accent} />
+        <Pressable onPress={handleResign} style={[ms.backBtn, { backgroundColor: t.lose + '18', borderColor: t.lose + '66' }]}>
+          <Text style={{ color: t.lose, fontWeight: '900', fontSize: 11, letterSpacing: 1 }}>END</Text>
         </Pressable>
         <View style={[ms.badge, { backgroundColor: t.primary + '22', borderColor: t.primary }, t.glow(t.primary, 6) as any]}>
           <Text style={[ms.badgeTxt, { color: t.primary }]}>ROUND {match?.roundNumber || 1}</Text>
@@ -393,6 +464,20 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
         </Animated.View>
       )}
 
+      {/* Waiting for opponent to join */}
+      {status === 'waiting' && (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.92)', zIndex: 120, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }]}>
+          <View style={[ms.modal, modalStyle]}>
+            <Text style={[ms.resultTitle, { color: t.primary, fontSize: 22, marginBottom: 10 }]}>⏳ WAITING</Text>
+            <Text style={[ms.subTxt, { textAlign: 'center', color: t.textSecondary, marginBottom: 24 }]}>
+              Waiting for your opponent to accept the match invite…
+            </Text>
+            <ActivityIndicator color={t.primary} size="large" style={{ marginBottom: 24 }} />
+            <NeonButton title="CANCEL" variant="danger" onPress={handleEndMatch} />
+          </View>
+        </View>
+      )}
+
       {/* Timeout Modal */}
       {status === 'timeout_pending' && (
         <Animated.View style={animOverlay}>
@@ -413,13 +498,37 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
                 <Text style={[ms.subTxt, { textAlign: 'center', color: t.textSecondary }]}>
                   Waiting for {opponentName} to decide...
                 </Text>
-                <View style={{ marginTop: 25 }}>
+                <View style={{ marginTop: 16, width: '100%' }}>
+                  <NeonButton title="END MATCH" variant="danger" onPress={handleEndMatch} />
+                </View>
+                <View style={{ marginTop: 16 }}>
                   <ActivityIndicator color={t.primary} size="large" />
                 </View>
               </>
             )}
           </Animated.View>
         </Animated.View>
+      )}
+
+      {/* Opponent Offline Overlay */}
+      {opponentOffline && (status === 'playing' || status === 'timeout_pending') && (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.92)', zIndex: 120, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }]}>
+          <View style={[ms.modal, modalStyle]}>
+            <Text style={{ fontSize: 48, marginBottom: 8 }}>📴</Text>
+            <Text style={[ms.resultTitle, { color: t.warning, fontSize: 24, marginBottom: 8 }]}>
+              {opponentName} is Offline
+            </Text>
+            <Text style={[ms.subTxt, { textAlign: 'center', color: t.textSecondary, marginBottom: 24 }]}>
+              Your opponent appears to have lost connection.
+              {"\n"}Do you want to wait or go back to lobby?
+            </Text>
+            <View style={{ gap: 12, width: '100%' }}>
+              <NeonButton title="CLAIM VICTORY" variant="primary" onPress={handleClaimVictory} />
+              <NeonButton title="WAIT" variant="secondary" onPress={() => setOpponentOffline(false)} />
+              <NeonButton title="BACK TO LOBBY" variant="danger" onPress={exitToLobby} />
+            </View>
+          </View>
+        </View>
       )}
 
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 999 }]}>

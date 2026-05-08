@@ -53,6 +53,29 @@ export async function sendMatchInvite(
 
 // ── Accept / Reject ───────────────────────────────────────────────────────────
 export async function acceptMatchInvite(inviteId: string, matchId: string, toUid: string, toName: string): Promise<void> {
+  // 1. Check that the sender (playerX) is still online
+  const matchSnap = await getDoc(doc(db, 'matches', matchId));
+  if (matchSnap.exists()) {
+    const matchData = matchSnap.data();
+    const senderUid: string | undefined = matchData.playerX?.uid;
+    if (senderUid) {
+      const senderSnap = await getDoc(doc(db, 'users', senderUid));
+      if (senderSnap.exists()) {
+        const lastSeen: number = senderSnap.data().lastSeen ?? 0;
+        const isOnline = Date.now() - lastSeen < 30_000; // 30s – covers 10s heartbeat + latency
+        if (!isOnline) {
+          // Cancel the invite so it disappears from UI
+          await updateDoc(doc(db, INVITES, inviteId), {
+            status: 'cancelled',
+            updatedAt: serverTimestamp(),
+          });
+          throw new Error('SENDER_OFFLINE');
+        }
+      }
+    }
+  }
+
+  // 2. Join match and mark invite accepted
   await joinMatch(matchId, toUid, toName);
   await updateDoc(doc(db, INVITES, inviteId), {
     status: 'accepted',

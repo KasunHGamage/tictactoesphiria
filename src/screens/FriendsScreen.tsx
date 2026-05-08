@@ -252,32 +252,49 @@ export default function FriendsScreen({ route }: any) {
     </View>
   );
 
-  const renderMatchInvite = ({ item }: { item: MatchInvite }) => (
-    <View style={[
-      s.item,
-      { backgroundColor: t.card, borderColor: t.accent + '88', borderWidth: 1.5 },
-      t.glow(t.accent, 8) as any,
-    ]}>
-      <View style={s.info}>
-        <Text style={[s.nameText, { color: t.textPrimary }]}>{item.fromName}</Text>
-        <Text style={[s.statusText, { color: t.accent }]}>⚔️ MATCH INVITATION</Text>
+  const renderMatchInvite = ({ item }: { item: MatchInvite }) => {
+    const handleAccept = async () => {
+      try {
+        await accept(item);
+      } catch (e: any) {
+        if (e?.message === 'SENDER_OFFLINE') {
+          Alert.alert(
+            '📴 Player Offline',
+            `${item.fromName} is no longer online. The invite has been removed.`,
+          );
+        } else {
+          Alert.alert('Error', 'Could not join the match. Please try again.');
+        }
+      }
+    };
+
+    return (
+      <View style={[
+        s.item,
+        { backgroundColor: t.card, borderColor: t.accent + '88', borderWidth: 1.5 },
+        t.glow(t.accent, 8) as any,
+      ]}>
+        <View style={s.info}>
+          <Text style={[s.nameText, { color: t.textPrimary }]}>{item.fromName}</Text>
+          <Text style={[s.statusText, { color: t.accent }]}>⚔️ MATCH INVITATION</Text>
+        </View>
+        <View style={s.actions}>
+          <Pressable
+            style={[s.actionBtn, { backgroundColor: t.success + '22', borderColor: t.success + '66' }]}
+            onPress={handleAccept}
+          >
+            <Text style={[s.actionBtnText, { color: t.textPrimary }]}>⚔️</Text>
+          </Pressable>
+          <Pressable
+            style={[s.actionBtn, { backgroundColor: t.lose + '22', borderColor: t.lose + '66' }]}
+            onPress={() => reject(item.id)}
+          >
+            <Text style={[s.actionBtnText, { color: t.textPrimary }]}>✕</Text>
+          </Pressable>
+        </View>
       </View>
-      <View style={s.actions}>
-        <Pressable
-          style={[s.actionBtn, { backgroundColor: t.success + '22', borderColor: t.success + '66' }]}
-          onPress={() => accept(item)}
-        >
-          <Text style={[s.actionBtnText, { color: t.textPrimary }]}>⚔️</Text>
-        </Pressable>
-        <Pressable
-          style={[s.actionBtn, { backgroundColor: t.lose + '22', borderColor: t.lose + '66' }]}
-          onPress={() => reject(item.id)}
-        >
-          <Text style={[s.actionBtnText, { color: t.textPrimary }]}>✕</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
+    );
+  };
 
   const copyAndShareId = async () => {
     if (myProfile?.gameId) {
