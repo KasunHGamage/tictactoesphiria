@@ -44,7 +44,7 @@ export default function PlayScreen({ navigation }: any) {
           ]}
           onPress={() => navigation.navigate('SetupDifficulty')}
         >
-          <View style={[s.iconCircle, { backgroundColor: t.mode === 'arcade' ? '#001A20' : '#EAF6FF', borderColor: t.secondary + '66' }, t.glow(t.secondary, 6) as any]}>
+          <View style={[s.iconCircle, { backgroundColor: t.mode === 'arcade' ? '#001A20' : '#F3EDE4', borderColor: t.secondary + '66' }, t.glow(t.secondary, 6) as any]}>
             <Ionicons name="desktop-outline" size={28} color={t.secondary} />
           </View>
           <View style={s.cardInfo}>
@@ -85,7 +85,7 @@ export default function PlayScreen({ navigation }: any) {
 
         {/* Global Lobby — coming soon */}
         <Pressable style={[s.card, s.comingSoonCard, { backgroundColor: t.card, borderColor: t.border }]} onPress={() => {}}>
-          <View style={[s.iconCircle, { backgroundColor: t.mode === 'arcade' ? '#1A1400' : '#FFFBEA', borderColor: t.warning + '66' }]}>
+          <View style={[s.iconCircle, { backgroundColor: t.mode === 'arcade' ? '#1A1400' : '#FAF9F6', borderColor: t.warning + '66' }]}>
             <Ionicons name="globe-outline" size={28} color={t.warning} />
           </View>
           <View style={s.cardInfo}>

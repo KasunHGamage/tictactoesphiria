@@ -80,7 +80,7 @@ export default function ProfileScreen() {
 
   const THEMES: { mode: ThemeMode; label: string; icon: string; desc: string }[] = [
     { mode: 'arcade', label: 'Arcade', icon: '⚡', desc: 'Neon glow, dark energy' },
-    { mode: 'calm',   label: 'Calm',   icon: '🌿', desc: 'Clean, soft & premium' },
+    { mode: 'calm',   label: 'Calm',   icon: '🌿', desc: 'Linen white, earthy & minimal' },
   ];
 
   return (
@@ -184,7 +184,7 @@ export default function ProfileScreen() {
       <Pressable
         style={({ pressed }) => [
           s.logoutBtn,
-          { backgroundColor: t.mode === 'arcade' ? '#150008' : '#FFF5F7', borderColor: t.accent + '88' },
+          { backgroundColor: t.mode === 'arcade' ? '#150008' : '#FAF9F6', borderColor: t.accent + '88' },
           t.glow(t.lose, 6) as any,
           pressed && { opacity: 0.75, transform: [{ scale: 0.98 }] },
         ]}

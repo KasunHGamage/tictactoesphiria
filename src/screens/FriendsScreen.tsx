@@ -3,7 +3,7 @@ import ScreenWrapper from '../components/ScreenWrapper'; // Re-save to fix undef
 import {
   StyleSheet, Text, View, ActivityIndicator,
   TextInput, Pressable, Alert, SectionList,
-  Platform,
+  Platform, Share, TouchableOpacity,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { Spacing } from '../../constants/themes';
@@ -16,6 +16,7 @@ import {
 } from '../services/friendsService';
 import { MatchInvite } from '../services/matchTypes';
 import { useMatchInvitations } from '../hooks/useMatchInvitations';
+import { listenToSentPendingInvites } from '../services/matchInviteService';
 import { onSnapshot, doc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
@@ -33,6 +34,8 @@ export default function FriendsScreen({ route }: any) {
   const [loading,        setLoading]        = useState(true);
   const [myProfile,      setMyProfile]      = useState<UserProfile | null>(null);
   const [showSearch,     setShowSearch]     = useState(false);
+  const [invitingUid,    setInvitingUid]    = useState<string | null>(null);
+  const [pendingInvitesTo, setPendingInvitesTo] = useState<Record<string, boolean>>({});
 
   const { incoming: matchInvites, inviteFriend, accept, reject } = useMatchInvitations(() => {});
 
@@ -46,6 +49,19 @@ export default function FriendsScreen({ route }: any) {
       setLoading(false);
     });
     return () => { unsubReqs(); unsubSent(); unsubFriends(); };
+  }, [user]);
+
+  // ── Track sent pending invites for UI state ──────────────────────────────
+  useEffect(() => {
+    if (!user) return;
+    const unsub = listenToSentPendingInvites(user.uid, (invites) => {
+      const map: Record<string, boolean> = {};
+      invites.forEach(inv => {
+        map[inv.to] = true;
+      });
+      setPendingInvitesTo(map);
+    });
+    return unsub;
   }, [user]);
 
   useEffect(() => {
@@ -109,10 +125,38 @@ export default function FriendsScreen({ route }: any) {
     );
   };
 
+  const handleInvite = async (friend: UserProfile) => {
+    if (invitingUid) return;
+    if (pendingInvitesTo[friend.uid]) {
+      Alert.alert('⏳ Invite Pending', `An invite to ${friend.displayName} is already pending.`);
+      return;
+    }
+    setInvitingUid(friend.uid);
+    try {
+      await inviteFriend(friend.uid);
+      Alert.alert('⚔️ Invite Sent!', `Match invitation sent to ${friend.displayName}.`);
+    } catch (e: any) {
+      if (e?.message === 'INVITE_PENDING') {
+        Alert.alert('⏳ Invite Pending', `An invite to ${friend.displayName} is already pending.`);
+      } else {
+        Alert.alert('Error', 'Could not send invite. Try again.');
+      }
+    } finally {
+      setInvitingUid(null);
+    }
+  };
+
   const renderFriend = ({ item }: { item: UserProfile }) => {
     const online = isOnline(item.lastSeen);
     const statusText = formatLastSeen(item.lastSeen);
     const sColor = online ? t.success : t.textSecondary;
+    const isInviting = invitingUid === item.uid;
+
+    const isPending = pendingInvitesTo[item.uid];
+    const btnDisabled = !online || isInviting || isPending;
+    const btnStyle = isPending
+      ? { backgroundColor: t.warning + '22', borderColor: t.warning + '88' }
+      : { backgroundColor: t.accent + '22', borderColor: t.accent + '88' };
 
     return (
       <Pressable 
@@ -126,10 +170,36 @@ export default function FriendsScreen({ route }: any) {
       >
         <View style={[s.statusDot, { backgroundColor: sColor }]} />
         <View style={s.info}>
-          <Text style={[s.nameText,   { color: t.textPrimary }]}>{item.displayName}</Text>
-          <Text style={[s.statusText, { color: sColor }]}>
-            {statusText}
-          </Text>
+          <Text style={[s.nameText, { color: t.textPrimary }]}>{item.displayName}</Text>
+          <Text style={[s.statusText, { color: sColor }]}>{statusText}</Text>
+        </View>
+        <View style={s.actions}>
+          {online && (
+            <Pressable
+              style={[
+                s.challengeBtn,
+                btnStyle,
+                !isPending && (t.glow(t.accent, 4) as any),
+                (isInviting || isPending) && { opacity: isPending ? 0.9 : 0.4 },
+              ]}
+              onPress={() => handleInvite(item)}
+              disabled={btnDisabled}
+            >
+              {isInviting ? (
+                <ActivityIndicator size="small" color={t.accent} />
+              ) : isPending ? (
+                <>
+                  <Text style={{ fontSize: 12 }}>⏳</Text>
+                  <Text style={[s.challengeBtnText, { color: t.warning }]}>WAITING</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={{ fontSize: 12 }}>⚔️</Text>
+                  <Text style={[s.challengeBtnText, { color: t.accent }]}>CHALLENGE</Text>
+                </>
+              )}
+            </Pressable>
+          )}
         </View>
       </Pressable>
     );
@@ -209,10 +279,17 @@ export default function FriendsScreen({ route }: any) {
     </View>
   );
 
-  const copyId = async () => {
+  const copyAndShareId = async () => {
     if (myProfile?.gameId) {
       await Clipboard.setStringAsync(myProfile.gameId);
-      Alert.alert('Copied', 'Your Game ID has been copied to clipboard!');
+      try {
+        await Share.share({
+          message: `🎮 Add me on Moving Tic-Tac-Toe!\nMy Game ID: ${myProfile.gameId}\n\nSearch my ID in the Friends screen to send a request!`,
+          title: 'My Moving Tic-Tac-Toe Game ID',
+        });
+      } catch (e) {
+        // user cancelled – ignore
+      }
     }
   };
 
@@ -246,11 +323,16 @@ export default function FriendsScreen({ route }: any) {
                 Friends
               </Text>
               {myProfile && (
-                <Pressable onPress={copyId} style={[s.idBadge, { backgroundColor: t.card, borderColor: t.border }]}>
+                <View style={[s.idBadge, { backgroundColor: t.card, borderColor: t.border }]}>
                   <Text style={{ color: t.textSecondary, fontSize: 10, fontWeight: '800' }}>
-                    ID: <Text style={{ color: t.primary }}>{myProfile.gameId}</Text>  📋
+                    ID: <Text style={{ color: t.primary }}>{myProfile.gameId}</Text>
                   </Text>
-                </Pressable>
+                  <View style={s.idActions}>
+                    <TouchableOpacity onPress={copyAndShareId} style={[s.idIconBtn, { borderColor: t.primary + '55' }]} activeOpacity={0.7}>
+                      <Text style={s.idIconText}>📋</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               )}
             </View>
 
@@ -326,7 +408,13 @@ const s = StyleSheet.create({
   eyebrow: { fontSize: 10, fontWeight: '900', letterSpacing: 3, marginBottom: 6 },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md },
   title:   { fontSize: 32, fontWeight: '900' },
-  idBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
+  idBadge: {
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+  },
+  idActions:  { flexDirection: 'row', gap: 4 },
+  idIconBtn:  { padding: 4, borderRadius: 6, borderWidth: 1 },
+  idIconText: { fontSize: 13 },
 
   addFriendBtn: { 
     borderRadius: 14, paddingVertical: 14, alignItems: 'center', 
@@ -365,4 +453,7 @@ const s = StyleSheet.create({
   actions:       { flexDirection: 'row', gap: Spacing.sm },
   actionBtn:     { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
   actionBtnText: { fontSize: 16, fontWeight: '900' },
+  challengeBtn:  { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  challengeBtnText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  cooldownText:  { fontSize: 11, fontWeight: '900', letterSpacing: 0.5 },
 });

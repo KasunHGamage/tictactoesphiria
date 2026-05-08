@@ -120,7 +120,7 @@ export default function HomeScreen({ navigation }: any) {
           >
             <View style={[
               s.actionIconWrap,
-              { backgroundColor: t.mode === 'arcade' ? '#001A20' : '#EAF4FF', borderColor: t.secondary + '88' },
+              { backgroundColor: t.mode === 'arcade' ? '#001A20' : '#F3EDE4', borderColor: t.secondary + '88' },
             ]}>
               <Text style={s.actionIcon}>🏆</Text>
             </View>

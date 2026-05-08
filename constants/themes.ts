@@ -121,33 +121,39 @@ export const arcadeTheme: AppTheme = {
 };
 
 // ══════════════════════════════════════════════════════════════════
-//  CALM THEME — clean, soft, premium, no neon
+//  CALM THEME — linen white, earthy & minimal
+//  Palette:
+//    #FAF9F6  Background  — "Linen" warm white
+//    #E5E5E5  Grid Lines  — Light gray borders
+//    #333333  X Marker    — Charcoal (soft black)
+//    #BC8F8F  O Marker    — Rosy Brown (muted pink-tan)
+//    #D4A373  Highlight   — Muted sand (wins / active / CTA)
 // ══════════════════════════════════════════════════════════════════
 export const calmTheme: AppTheme = {
   mode: 'calm',
 
-  bg:        '#F5F7FB',
-  card:      '#FFFFFF',
-  cardAlt:   '#EEF2FF',
-  avatarBg:  '#EEF2FF',
-  border:    '#E5E7EB',
+  bg:        '#FAF9F6',   // linen warm white — main background
+  card:      '#FFFFFF',   // pure white cards
+  cardAlt:   '#F3EDE4',   // warm oat — hero / promo card
+  avatarBg:  '#F3EDE4',   // warm oat avatar background
+  border:    '#E5E5E5',   // light gray — grid lines & dividers
 
-  primary:   '#6366F1',   // requested solid primary
-  secondary: '#374151',   // requested solid secondary
-  accent:    '#DC2626',   // requested solid danger
-  success:   '#3A9A5C',   // forest green
-  warning:   '#C89A20',   // warm gold
-  lose:      '#DC2626',
-  win:       '#3A9A5C',
+  primary:   '#D4A373',   // sand highlight — buttons, CTAs, active
+  secondary: '#BC8F8F',   // rosy brown — O marker / secondary accent
+  accent:    '#333333',   // charcoal — X marker / danger
+  success:   '#7A9E7E',   // soft sage green for wins
+  warning:   '#D4A373',   // reuse sand as warning/highlight
+  lose:      '#BC8F8F',   // rosy brown for losses
+  win:       '#D4A373',   // sand for wins
 
-  textPrimary:   '#111827',
-  textSecondary: '#6B7280',
-  textOnPrimary: '#FFFFFF',
+  textPrimary:   '#2C2C2C',   // near-charcoal — headings & body
+  textSecondary: '#888888',   // mid-gray — labels & subtitles
+  textOnPrimary: '#FFFFFF',   // white on sand/rosy buttons
 
   tabBg:       '#FFFFFF',
-  tabBorder:   '#E2DFDA',
-  tabActive:   '#6D5ACD',
-  tabInactive: '#BBBBCC',
+  tabBorder:   '#E5E5E5',
+  tabActive:   '#D4A373',
+  tabInactive: '#CCCCCC',
 
   // No glow in Calm — return empty objects
   glow:       noGlow,

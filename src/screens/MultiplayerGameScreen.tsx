@@ -256,7 +256,7 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
   const cellColors = { winColor: t.warning, selectedColor: t.primary, cellBg: t.card, cellBorder: t.border, xColor: t.accent, oColor: t.secondary, isCalm };
   const resultTitleColor = isWinner ? t.win : isLoser ? t.lose : t.textPrimary;
   const modalStyle = isCalm
-    ? { backgroundColor: '#F9FAFB', borderColor: t.border, borderWidth: 1 }
+    ? { backgroundColor: '#FAF9F6', borderColor: t.border, borderWidth: 1.5 }
     : { backgroundColor: '#130820', borderColor: t.primary, borderWidth: 2, ...(t.glow(t.primary, 22) as any) };
 
   const exitToLobby = () => navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Main', params: { screen: 'Home' } }] }));

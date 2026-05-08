@@ -224,7 +224,7 @@ export default function GameScreen({ navigation, route }: any) {
 
   const cellColors = { winColor: t.warning, selectedColor: t.primary, cellBg: t.card, cellBorder: t.border, xColor: t.accent, oColor: t.secondary, isCalm };
   const resultColor = state.winner === 'X' ? t.win : state.winner === 'O' ? t.lose : t.textPrimary;
-  const modalBg    = isCalm ? { backgroundColor: '#F9FAFB', borderColor: t.border, borderWidth: 1 } : { backgroundColor: '#130820', borderColor: t.primary, borderWidth: 2, ...(t.glow(t.primary, 20) as any) };
+  const modalBg    = isCalm ? { backgroundColor: '#FAF9F6', borderColor: t.border, borderWidth: 1.5 } : { backgroundColor: '#130820', borderColor: t.primary, borderWidth: 2, ...(t.glow(t.primary, 20) as any) };
 
   return (
     <ScreenWrapper scroll={false} horizontalPadding={0}>
