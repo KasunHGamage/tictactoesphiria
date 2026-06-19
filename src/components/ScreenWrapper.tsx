@@ -21,16 +21,29 @@ const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
 }) => {
   const t = useAppTheme();
   const insets = useSafeAreaInsets();
+  const isCalm = t.mode === 'calm';
+  
+  // Increase horizontal padding for premium feel and better breathing room
+  const adjustedPadding = isCalm ? Math.max(horizontalPadding, Spacing.lg) : horizontalPadding;
   const bgColor = backgroundColor ?? t.bg;
 
-  const containerStyle = [styles.container, { backgroundColor: bgColor }];
-  const contentStyle   = [styles.content,   { paddingHorizontal: horizontalPadding }];
+  const containerStyle = [
+    styles.container,
+    { backgroundColor: bgColor },
+  ];
+  const contentStyle = [
+    styles.content,
+    { paddingHorizontal: adjustedPadding },
+  ];
 
   if (scroll) {
     return (
       <SafeAreaView edges={['top', 'left', 'right']} style={containerStyle}>
         <ScrollView
-          contentContainerStyle={[contentStyle, { paddingBottom: insets.bottom + 80 }]}
+          contentContainerStyle={[
+            contentStyle,
+            { paddingBottom: insets.bottom + 100, paddingTop: isCalm ? Spacing.md : Spacing.sm },
+          ]}
           showsVerticalScrollIndicator={false}
           bounces={false}
           refreshControl={refreshControl}
@@ -44,7 +57,11 @@ const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
   return (
     <SafeAreaView
       edges={['top', 'left', 'right']}
-      style={[containerStyle, contentStyle, { paddingBottom: insets.bottom + 80 }]}
+      style={[
+        containerStyle,
+        contentStyle,
+        { paddingBottom: insets.bottom + 100, paddingTop: isCalm ? Spacing.md : Spacing.sm },
+      ]}
     >
       {children}
     </SafeAreaView>
@@ -53,7 +70,7 @@ const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content:   { flexGrow: 1, justifyContent: 'flex-start' },
+  content: { flexGrow: 1, justifyContent: 'flex-start' },
 });
 
 export default ScreenWrapper;

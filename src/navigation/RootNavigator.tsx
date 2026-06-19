@@ -7,6 +7,7 @@ import { NavigationContainer, createNavigationContainerRef, StackActions } from 
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ActivityIndicator, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../auth/AuthContext';
 import { useMatchInvitations } from '../hooks/useMatchInvitations';
@@ -33,6 +34,39 @@ const navigationRef = createNavigationContainerRef();
 
 function MainTabs() {
   const t = useAppTheme();
+  const isCalm = t.mode === 'calm';
+  const insets = useSafeAreaInsets();
+
+  // Premium tab bar styling
+  const tabBarStyle = isCalm
+    ? {
+        backgroundColor: 'rgba(255, 253, 252, 0.95)',  // off-white with slight transparency
+        borderTopWidth: 0.8,
+        borderTopColor: 'rgba(200,155,109,0.25)',
+        height: 60 + insets.bottom,
+        paddingBottom: Math.max(insets.bottom, 10),
+        paddingTop: 8,
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        position: 'absolute' as const,
+        elevation: 8,
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 16,
+      }
+    : {
+        backgroundColor: t.tabBg,
+        borderTopWidth: 0.8,
+        borderTopColor: t.tabBorder,
+        height: 60 + insets.bottom,
+        paddingBottom: Math.max(insets.bottom, 10),
+        paddingTop: 8,
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        position: 'absolute' as const,
+        elevation: 0,
+      };
 
   return (
     <Tab.Navigator
@@ -49,27 +83,15 @@ function MainTabs() {
         },
         tabBarActiveTintColor:   t.tabActive,
         tabBarInactiveTintColor: t.tabInactive,
-        tabBarStyle: {
-          backgroundColor: t.tabBg,
-          borderTopWidth: 1,
-          borderTopColor: t.tabBorder,
-          height: 70,
-          paddingBottom: 12,
-          paddingTop: 10,
-          borderTopLeftRadius: 28,
-          borderTopRightRadius: 28,
-          position: 'absolute',
-          elevation: 0,
-          shadowColor:   t.primary,
-          shadowOffset:  { width: 0, height: -4 },
-          shadowOpacity: t.mode === 'arcade' ? 0.25 : 0.08,
-          shadowRadius:  18,
-        },
+        tabBarStyle,
         tabBarLabelStyle: {
           fontSize: 10,
-          fontWeight: '800',
+          fontWeight: isCalm ? '600' : '800',
           marginTop: 2,
-          letterSpacing: 0.5,
+          letterSpacing: 0.3,
+        },
+        tabBarItemStyle: {
+          paddingVertical: 4,
         },
       })}
     >

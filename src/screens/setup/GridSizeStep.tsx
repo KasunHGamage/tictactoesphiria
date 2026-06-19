@@ -1,5 +1,6 @@
-import React from 'react';
-import { StyleSheet, Text, View, Pressable, Alert, ActivityIndicator } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, Text, View, Pressable, ActivityIndicator } from 'react-native';
+import ThemedAlert from '../../components/ThemedAlert';
 import { CommonActions } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInRight } from 'react-native-reanimated';
@@ -16,7 +17,9 @@ export default function GridSizeStep({ navigation, route }: any) {
   const { mode, difficulty } = route.params;
   const isAI = mode === 'ai';
   const isCalm = t.mode === 'calm';
-  const [loading, setLoading] = React.useState(false);
+  const [loading, setLoading] = useState(false);
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertMsg,     setAlertMsg]     = useState('');
 
   const options = [
     { label: '3×3', value: 3, desc: 'Classic speed.',    icon: 'apps' },
@@ -36,13 +39,15 @@ export default function GridSizeStep({ navigation, route }: any) {
       }
     } catch (e) {
       console.error('[SETUP] Failed to start match:', e);
-      Alert.alert('Error', 'Failed to enter arena. Please try again.');
+      setAlertMsg('Failed to enter arena. Please try again.');
+      setAlertVisible(true);
     } finally {
       setLoading(false);
     }
   };
 
   return (
+    <>
     <SetupStepWrapper
       title="Grid Size"
       subtitle="Select the board dimensions for the match."
@@ -89,6 +94,14 @@ export default function GridSizeStep({ navigation, route }: any) {
         </View>
       </View>
     </SetupStepWrapper>
+
+    <ThemedAlert
+      visible={alertVisible}
+      title="Error"
+      message={alertMsg}
+      onDismiss={() => setAlertVisible(false)}
+    />
+    </>
   );
 }
 

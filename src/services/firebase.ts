@@ -3,9 +3,9 @@
 // ─────────────────────────────────────────────
 
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { doc, getDoc, getFirestore } from 'firebase/firestore';
 // @ts-ignore
-import { initializeAuth, getAuth, getReactNativePersistence } from 'firebase/auth';
+import { initializeAuth, getAuth, getReactNativePersistence, User } from 'firebase/auth';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
@@ -15,6 +15,7 @@ const firebaseConfig = {
   storageBucket:     process.env.EXPO_PUBLIC_STORAGE_BUCKET,
   messagingSenderId: process.env.EXPO_PUBLIC_MESSAGING_SENDER_ID,
   appId:             process.env.EXPO_PUBLIC_APP_ID,
+  measurementId:     process.env.EXPO_PUBLIC_MEASUREMENT_ID,
 };
 
 if (!firebaseConfig.apiKey) {
@@ -43,3 +44,18 @@ try {
 
 export { auth };
 export const db = getFirestore(app);
+
+export async function waitForAuthToken(): Promise<User> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('No authenticated Firebase user.');
+  }
+
+  await currentUser.getIdToken();
+  return currentUser;
+}
+
+export async function checkFirestoreConnection(uid: string): Promise<void> {
+  await waitForAuthToken();
+  await getDoc(doc(db, 'users', uid));
+}

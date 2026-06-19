@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ScreenWrapper from '../components/ScreenWrapper';
 import {
   Pressable, StatusBar, StyleSheet, Text, useWindowDimensions,
-  View, Alert, ActivityIndicator,
+  View, ActivityIndicator,
 } from 'react-native';
+import ThemedAlert, { ThemedAlertButton } from '../components/ThemedAlert';
 import { CommonActions } from '@react-navigation/native';
 import Animated, {
   useSharedValue, useAnimatedStyle, withTiming, withSequence,
@@ -68,7 +69,7 @@ function Cell({ index, value, isSelected, isWinCell, isOtherDimmed, size, fontSi
       : 1;
   }, [isWinCell]);
 
-  const { winColor, selectedColor, cellBg, cellBorder, xColor, oColor, isCalm } = colors;
+  const { winColor, selectedColor, cellBg, cellBorder, xColor, oColor } = colors;
   const animCell = useAnimatedStyle(() => ({
     transform: [{ scale: isWinCell ? pulse.value : scale.value }],
     opacity: isOtherDimmed && !isWinCell ? 0.4 : 1,
@@ -93,8 +94,8 @@ function Cell({ index, value, isSelected, isWinCell, isOtherDimmed, size, fontSi
         {value && (
           <Text style={{
             fontSize, fontWeight: '900', color: pieceColor,
-            textShadowColor: isCalm ? 'transparent' : pieceColor,
-            textShadowRadius: isCalm ? 0 : 12,
+            textShadowColor: 'transparent',
+            textShadowRadius: 0,
           }}>
             {value === 'X' ? '✕' : '○'}
           </Text>
@@ -122,6 +123,24 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
   const [timeLeft,       setTimeLeft]       = useState<number | null>(null);
   const [gameEnded,      setGameEnded]      = useState(false);
   const [opponentOffline, setOpponentOffline] = useState(false);
+  const [showOpponentReadyModal, setShowOpponentReadyModal] = useState(false);
+
+  // Themed alert state
+  const [alertVisible,  setAlertVisible]  = useState(false);
+  const [alertTitle,    setAlertTitle]    = useState('');
+  const [alertMessage,  setAlertMessage]  = useState('');
+  const [alertButtons,  setAlertButtons]  = useState<ThemedAlertButton[]>([]);
+
+  const showAlert = (
+    title: string,
+    message: string,
+    buttons: ThemedAlertButton[] = [{ text: 'OK', style: 'default' }],
+  ) => {
+    setAlertTitle(title);
+    setAlertMessage(message);
+    setAlertButtons(buttons);
+    setAlertVisible(true);
+  };
 
   // Stores raw lastSeen from Firestore — updated by listener, read by interval
   const opponentLastSeenRef    = useRef<number>(0);
@@ -151,7 +170,7 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
   };
 
   const handleEndMatchConfirm = () => {
-    Alert.alert(
+    showAlert(
       'End Match?',
       'This will forfeit the match. Your opponent will be declared the winner.',
       [
@@ -169,20 +188,27 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
     boardScale.value = 1; resultScale.value = 0.8; resultOpacity.value = 0;
   }, []);
 
+  // Calculate oppUid BEFORE any useEffect that uses it
+  const oppUid = playerSide === 'X' ? match?.playerO?.uid : match?.playerX?.uid;
+
   // ── Opponent presence monitoring ────────────────────────────────────────────
   // Part 1: Firestore listener — keeps lastSeen ref up to date
   useEffect(() => {
     if (!oppUid) return;
-    const unsub = onSnapshot(doc(db, 'users', oppUid), (snap) => {
-      if (!snap.exists()) return;
-      const lastSeen: number = snap.data().lastSeen ?? 0;
-      opponentLastSeenRef.current = lastSeen;
-      opponentLastSeenLoaded.current = true; // mark: we have a real value
-    });
+    const unsub = onSnapshot(
+      doc(db, 'users', oppUid),
+      (snap) => {
+        if (!snap.exists()) return;
+        const lastSeen: number = snap.data().lastSeen ?? 0;
+        opponentLastSeenRef.current = lastSeen;
+        opponentLastSeenLoaded.current = true; // mark: we have a real value
+      },
+      (error) => console.warn('[Firestore] opponent presence listener failed:', error)
+    );
     return unsub;
   }, [oppUid]);
 
-  // Part 2: Interval checker — evaluates staleness every 3s
+  // Part 2: Immediate check when match starts playing + periodic check every 3s
   useEffect(() => {
     const ACTIVE = ['playing', 'timeout_pending'];
     const check = () => {
@@ -192,11 +218,16 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
         setOpponentOffline(false);
         return;
       }
-      // 20s = 2× the 10s heartbeat interval — one missed beat = offline
-      const stale = Date.now() - opponentLastSeenRef.current > 20_000;
+      // 10s threshold: 10s heartbeat - catches real disconnects quickly
+      const stale = Date.now() - opponentLastSeenRef.current > 10_000;
       setOpponentOffline(stale);
     };
-    check();
+    
+    // Immediate check when match starts playing
+    if (match?.status === 'playing') {
+      check();
+    }
+    
     const id = setInterval(check, 3000);
     return () => clearInterval(id);
   }, [match?.status]);
@@ -254,7 +285,6 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
   const opponentSide: Player = playerSide === 'X' ? 'O' : 'X';
   const opponentName = playerSide === 'X' ? match?.playerO?.displayName ?? 'Opponent' : match?.playerX?.displayName ?? 'Opponent';
   const myScore    = match?.scores?.[myUid] || 0;
-  const oppUid     = playerSide === 'X' ? match?.playerO?.uid : match?.playerX?.uid;
   const oppScore   = (oppUid && match?.scores?.[oppUid]) || 0;
   const myStreak   = match?.winStreaks?.[myUid] || 0;
   const status     = match?.status;
@@ -288,6 +318,16 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
     }
   }, [match?.status, match?.readyPlayers?.length, playerSide, matchId]);
 
+  // Show modal when opponent marks themselves ready (but I haven't)
+  useEffect(() => {
+    const isOpponentReady = match?.readyPlayers?.length === 1 && !match?.readyPlayers?.includes(myUid);
+    const iAmReady = match?.readyPlayers?.includes(myUid);
+    
+    if (isOpponentReady && !iAmReady && (match?.status === 'waiting_next_round' || match?.status === 'finished' || match?.status === 'abandoned')) {
+      setShowOpponentReadyModal(true);
+    }
+  }, [match?.readyPlayers, match?.status, myUid]);
+
   const handleCell = useCallback(async (index: number) => {
     if (!match || !myTurn || match.status !== 'playing') return;
     if (phase === 'placement') { if (board[index]) return; await applyMove({ type: 'place', toIndex: index }); return; }
@@ -297,9 +337,9 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
     if (board[index] !== null) return;
     const from = selectedIdx; setSelectedIdx(null);
     await applyMove({ type: 'move', fromIndex: from, toIndex: index });
-  }, [match, myTurn, phase, board, selectedIdx, playerSide, matchId]);
+  }, [match, myTurn, phase, board, selectedIdx, playerSide, matchId, applyMove]);
 
-  const handleResign = () => Alert.alert('End Match?', 'This will forfeit — your opponent wins.', [
+  const handleResign = () => showAlert('End Match?', 'This will forfeit — your opponent wins.', [
     { text: 'Cancel', style: 'cancel' },
     { text: 'End Match', style: 'destructive', onPress: handleEndMatch },
   ]);
@@ -327,8 +367,8 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
   const cellColors = { winColor: t.warning, selectedColor: t.primary, cellBg: t.card, cellBorder: t.border, xColor: t.accent, oColor: t.secondary, isCalm };
   const resultTitleColor = isWinner ? t.win : isLoser ? t.lose : t.textPrimary;
   const modalStyle = isCalm
-    ? { backgroundColor: '#FAF9F6', borderColor: t.border, borderWidth: 1.5 }
-    : { backgroundColor: '#130820', borderColor: t.primary, borderWidth: 2, ...(t.glow(t.primary, 22) as any) };
+    ? { backgroundColor: t.bg, borderColor: t.border, borderWidth: 1.5 }
+    : { backgroundColor: t.cardAlt, borderColor: t.primary, borderWidth: 1.5 };
 
   const exitToLobby = () => navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Main', params: { screen: 'Home' } }] }));
 
@@ -362,7 +402,7 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
           </Animated.View>
 
           <View style={ms.vsContainer}>
-            <View style={[ms.vsCircle, { backgroundColor: isCalm ? t.cardAlt : '#160B28', borderColor: t.primary + '66' }, t.glow(t.primary, 5) as any]}>
+            <View style={[ms.vsCircle, { backgroundColor: t.cardAlt, borderColor: t.primary + '66' }, t.glow(t.primary, 5) as any]}>
               <Text style={[ms.vsTxt, { color: t.primary }]}>VS</Text>
             </View>
           </View>
@@ -423,7 +463,7 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
             <Text style={[ms.ruleTxt, { color: t.textSecondary }]}>{gridSize}×{gridSize} • {winLength} in a row</Text>
           </View>
           <Text style={[ms.statusMain, { color: myTurn ? t.primary : t.textSecondary }]}>{statusLabel}</Text>
-          <Text style={[ms.phaseMain, { color: t.primary, textShadowColor: isCalm ? 'transparent' : t.primary, textShadowRadius: isCalm ? 0 : 8 }]}>
+          <Text style={[ms.phaseMain, { color: t.primary, textShadowColor: 'transparent', textShadowRadius: 0 }]}>
             {phase === 'placement' ? 'PLACEMENT' : 'MOVEMENT'}
           </Text>
         </View>
@@ -449,7 +489,7 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
               </View>
             )}
             <View style={{ marginTop: 20, width: '100%', gap: 12 }}>
-              {match?.endReason !== 'resign' && (
+              {match?.endReason !== 'resign' && status !== 'abandoned' && (
                 match?.readyPlayers?.includes(myUid) ? (
                   <NeonButton title="WAITING FOR OPPONENT..." variant="secondary" onPress={() => {}} disabled />
                 ) : (
@@ -478,15 +518,36 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
         </View>
       )}
 
+      {/* Opponent wants to play another match */}
+      {showOpponentReadyModal && (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.92)', zIndex: 120, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }]}>
+          <View style={[ms.modal, modalStyle]}>
+            <Text style={[ms.resultTitle, { color: t.primary, fontSize: 22, marginBottom: 10 }]}>⚔️ READY FOR MORE?</Text>
+            <Text style={[ms.subTxt, { textAlign: 'center', color: t.textSecondary, marginBottom: 24 }]}>
+              {opponentName} wants to play another match!
+            </Text>
+            <View style={{ gap: 12, width: '100%' }}>
+              <NeonButton title="LET'S GO!" variant="primary" 
+                onPress={async () => {
+                  setShowOpponentReadyModal(false);
+                  await setReadyForNextRound(matchId, myUid);
+                }}
+              />
+              <NeonButton title="EXIT TO LOBBY" variant="secondary" onPress={exitToLobby} />
+            </View>
+          </View>
+        </View>
+      )}
+
       {/* Timeout Modal */}
       {status === 'timeout_pending' && (
         <Animated.View style={animOverlay}>
           <Animated.View style={[ms.modal, modalStyle, animResult]}>
-            <Text style={[ms.resultTitle, { color: t.lose }]}>TIME'S UP</Text>
+            <Text style={[ms.resultTitle, { color: t.lose }]}>TIME&apos;S UP</Text>
             {match?.timedOutPlayer === playerSide ? (
               <>
                 <Text style={[ms.subTxt, { marginBottom: 20, textAlign: 'center', color: t.textSecondary }]}>
-                  You didn't make a move in time. Continue or end the match?
+                  You didn&apos;t make a move in time. Continue or end the match?
                 </Text>
                 <View style={{ gap: 15, width: '100%' }}>
                   <NeonButton title="CONTINUE"   variant="primary"  onPress={() => continueMatch(matchId)} />
@@ -534,6 +595,14 @@ export default function MultiplayerGameScreen({ route, navigation }: any) {
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 999 }]}>
         <NeonConfetti show={showConfetti} onComplete={() => setShowConfetti(false)} />
       </View>
+
+      <ThemedAlert
+        visible={alertVisible}
+        title={alertTitle}
+        message={alertMessage}
+        buttons={alertButtons}
+        onDismiss={() => setAlertVisible(false)}
+      />
     </ScreenWrapper>
   );
 }

@@ -41,6 +41,10 @@ export interface AppTheme {
   tabActive: string;
   tabInactive: string;
 
+  // ── Premium shadow tokens ─────────────────────
+  shadowElevation: (level: 'sm' | 'md' | 'lg') => object;
+  premiumBorder: string;  // thin elegant borders
+
   // ── Glow helpers (no-ops in Calm) ─────────────
   glow: (color: string, radius?: number) => object;
   glowStrong: (color: string) => object;
@@ -51,11 +55,17 @@ export interface AppTheme {
 // ── Shared typography ──────────────────────────────────────────────
 export const Typography = {
   fontFamily: Platform.select({
-    ios: 'Orbitron', android: 'Orbitron', default: 'Orbitron',
+    ios: '-apple-system', android: 'System', default: 'System',
   }) as string,
   titleSize: 32,
   labelSize: 12,
   bodySize:  16,
+  // Premium weights for hierarchy
+  thin: '300',
+  regular: '400',
+  medium: '500',
+  semibold: '600',
+  bold: '700',
 };
 
 // ── Spacing (shared across themes) ────────────────────────────────
@@ -65,6 +75,7 @@ export const Spacing = {
   md: 16,
   lg: 20,
   xl: 28,
+  xxl: 40,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -85,6 +96,23 @@ const makeTextGlow = (color: string) => ({
 const noGlow = () => ({});
 const noTextGlow = () => ({});
 
+// Premium shadow system for calm theme
+const makePremiumShadow = (level: 'sm' | 'md' | 'lg') => {
+  const config = {
+    sm: { shadowRadius: 4, shadowOpacity: 0.06, elevation: 2 },
+    md: { shadowRadius: 12, shadowOpacity: 0.08, elevation: 4 },
+    lg: { shadowRadius: 20, shadowOpacity: 0.1, elevation: 8 },
+  };
+  const c = config[level];
+  return {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: level === 'sm' ? 1 : level === 'md' ? 2 : 4 },
+    shadowRadius: c.shadowRadius,
+    shadowOpacity: c.shadowOpacity,
+    elevation: c.elevation,
+  };
+};
+
 // ══════════════════════════════════════════════════════════════════
 //  ARCADE THEME — energetic neon, dark base
 // ══════════════════════════════════════════════════════════════════
@@ -93,67 +121,78 @@ export const arcadeTheme: AppTheme = {
 
   bg:        '#07070D',
   card:      '#11111A',
-  cardAlt:   '#1A0B2E',
-  avatarBg:  '#1A0B2E',
-  border:    '#2B2B44',
+  cardAlt:   '#161622',
+  avatarBg:  '#161622',
+  border:    'rgba(168,85,247,0.35)',
 
-  primary:   '#9D4EDD',
-  secondary: '#00E5FF',
-  accent:    '#FF2D9B',
-  success:   '#39FF14',
-  warning:   '#FFD60A',
-  lose:      '#FF3355',
-  win:       '#39FF14',
+  primary:   '#A855F7',
+  secondary: '#C084FC',
+  accent:    '#F472B6',
+  success:   '#34D399',
+  warning:   '#FBBF24',
+  lose:      '#F87171',
+  win:       '#34D399',
 
   textPrimary:   '#FFFFFF',
-  textSecondary: '#7878A0',
+  textSecondary: '#94A3B8',
   textOnPrimary: '#FFFFFF',
 
-  tabBg:       '#0A0A14',
-  tabBorder:   '#2B2B44',
-  tabActive:   '#9D4EDD',
-  tabInactive: '#3A3A5C',
+  tabBg:       '#080812',
+  tabBorder:   'rgba(168,85,247,0.20)',
+  tabActive:   '#A855F7',
+  tabInactive: '#475569',
 
-  glow:       makeGlow,
-  glowStrong: (c) => makeGlow(c, 24),
-  glowSubtle: (c) => makeGlow(c, 8),
-  textGlow:   makeTextGlow,
+  premiumBorder: 'rgba(168,85,247,0.35)',
+  shadowElevation: () => ({}),  // No-op for arcade
+
+  glow:       noGlow,
+  glowStrong: noGlow,
+  glowSubtle: noGlow,
+  textGlow:   noTextGlow,
 };
 
 // ══════════════════════════════════════════════════════════════════
-//  CALM THEME — linen white, earthy & minimal
-//  Palette:
-//    #FAF9F6  Background  — "Linen" warm white
-//    #E5E5E5  Grid Lines  — Light gray borders
-//    #333333  X Marker    — Charcoal (soft black)
-//    #BC8F8F  O Marker    — Rosy Brown (muted pink-tan)
-//    #D4A373  Highlight   — Muted sand (wins / active / CTA)
+//  CALM THEME — Premium luxury aesthetic inspired by Apple, Linear, Notion
+//  Palette (premium warm neutrals):
+//    #F5F1EA  Background  — Soft warm beige
+//    #FFFDFC  Cards       — Luxurious off-white
+//    #1E1E1E  Text        — Rich almost-black
+//    #7B7B7B  Secondary   — Soft mid-tone gray
+//    rgba(200,155,109,0.35)  Borders — Subtle warm brown
+//    #C89B6D  Primary     — Premium accent gold
+//    #6FA3FF  Blue        — Muted sophisticated blue
+//    #7FA37C  Green       — Soft sage green
+//    #C89A9A  Red         — Soft dusty rose
 // ══════════════════════════════════════════════════════════════════
 export const calmTheme: AppTheme = {
   mode: 'calm',
 
-  bg:        '#FAF9F6',   // linen warm white — main background
-  card:      '#FFFFFF',   // pure white cards
-  cardAlt:   '#F3EDE4',   // warm oat — hero / promo card
-  avatarBg:  '#F3EDE4',   // warm oat avatar background
-  border:    '#E5E5E5',   // light gray — grid lines & dividers
+  bg:        '#F5F1EA',   // soft warm beige — main background
+  card:      '#FFFDFC',   // luxurious off-white cards
+  cardAlt:   '#FAF8F5',   // warmer off-white — hero / promo
+  avatarBg:  '#FAF8F5',   // warmer off-white avatar background
+  border:    'rgba(200,155,109,0.35)',  // subtle warm brown border
 
-  primary:   '#D4A373',   // sand highlight — buttons, CTAs, active
-  secondary: '#BC8F8F',   // rosy brown — O marker / secondary accent
-  accent:    '#333333',   // charcoal — X marker / danger
-  success:   '#7A9E7E',   // soft sage green for wins
-  warning:   '#D4A373',   // reuse sand as warning/highlight
-  lose:      '#BC8F8F',   // rosy brown for losses
-  win:       '#D4A373',   // sand for wins
+  primary:   '#C89B6D',   // premium accent gold — CTAs, active states
+  secondary: '#6FA3FF',   // muted sophisticated blue — accents
+  accent:    '#C89A9A',   // soft dusty rose — alerts / accents
+  success:   '#7FA37C',   // soft sage green for wins
+  warning:   '#C89B6D',   // gold as warning/highlight
+  lose:      '#C89A9A',   // soft rose for losses
+  win:       '#7FA37C',   // sage green for wins
 
-  textPrimary:   '#2C2C2C',   // near-charcoal — headings & body
-  textSecondary: '#888888',   // mid-gray — labels & subtitles
-  textOnPrimary: '#FFFFFF',   // white on sand/rosy buttons
+  textPrimary:   '#1E1E1E',   // rich almost-black — headings & body
+  textSecondary: '#7B7B7B',   // soft mid-gray — labels & subtitles
+  textOnPrimary: '#FFFFFF',   // white text on colored buttons
 
-  tabBg:       '#FFFFFF',
-  tabBorder:   '#E5E5E5',
-  tabActive:   '#D4A373',
-  tabInactive: '#CCCCCC',
+  tabBg:       '#FFFDFC',
+  tabBorder:   'rgba(200,155,109,0.2)',     // very subtle border
+  tabActive:   '#C89B6D',    // gold for active tab
+  tabInactive: '#A8A8A8',    // muted gray for inactive
+
+  premiumBorder: 'rgba(200,155,109,0.35)',  // thin elegant borders
+
+  shadowElevation: makePremiumShadow,
 
   // No glow in Calm — return empty objects
   glow:       noGlow,

@@ -1,0 +1,82 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function isMatchParticipant(data) {
+      return signedIn()
+        && (
+          data.playerX.uid == request.auth.uid
+          || (data.playerO != null && data.playerO.uid == request.auth.uid)
+        );
+    }
+
+    function isUserInList(users) {
+      return signedIn() && users is list && request.auth.uid in users;
+    }
+
+    match /users/{userId} {
+      allow read, list: if signedIn();
+      allow create: if isSelf(userId) && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isSelf(userId);
+    }
+
+    match /friendRequests/{requestId} {
+      allow read, list: if signedIn()
+        && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.to is string
+        && request.resource.data.status == 'pending';
+      allow update, delete: if signedIn()
+        && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+    }
+
+    match /friends/{friendId} {
+      allow read, list: if isUserInList(resource.data.users);
+      allow create: if isUserInList(request.resource.data.users)
+        && request.resource.data.users.size() == 2;
+      allow update, delete: if isUserInList(resource.data.users);
+    }
+
+    match /invites/{inviteId} {
+      allow read, list: if signedIn()
+        && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.to is string
+        && request.resource.data.status == 'pending';
+      allow update, delete: if signedIn()
+        && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid)
+        && request.resource.data.from == resource.data.from
+        && request.resource.data.to == resource.data.to;
+    }
+
+    match /matches/{matchId} {
+      allow get: if signedIn()
+        && (isMatchParticipant(resource.data) || resource.data.status == 'waiting');
+      allow list: if isMatchParticipant(resource.data);
+      allow create: if signedIn()
+        && request.resource.data.playerX.uid == request.auth.uid
+        && request.resource.data.playerO == null
+        && request.resource.data.status == 'waiting';
+      allow update: if signedIn()
+        && (
+          isMatchParticipant(resource.data)
+          || (
+            resource.data.status == 'waiting'
+            && resource.data.playerO == null
+            && request.resource.data.playerO.uid == request.auth.uid
+          )
+        );
+      allow delete: if isMatchParticipant(resource.data);
+    }
+  }
+}

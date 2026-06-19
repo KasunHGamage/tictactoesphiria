@@ -5,7 +5,7 @@
 import { Board, Player, Difficulty } from '../game/gameTypes';
 
 export type MatchStatus = 'waiting' | 'playing' | 'timeout_pending' | 'finished' | 'abandoned' | 'waiting_next_round';
-export type InviteStatus = 'pending' | 'accepted' | 'rejected';
+export type InviteStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'user_in_match';
 
 export interface PlayerInfo {
   uid: string;

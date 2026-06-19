@@ -14,7 +14,7 @@ import { useAppTheme } from '../context/ThemeContext';
 
 const MEDALS      = ['🥇', '🥈', '🥉'];
 const RANK_COLORS_ARCADE = ['#FFD60A', '#C0C0D0', '#CD7F32'];
-const RANK_COLORS_CALM   = ['#D4A373', '#BC8F8F', '#888888'];
+const RANK_COLORS_CALM   = ['#D4A574', '#8B6F47', '#6B6B6B'];
 
 export default function LeaderboardScreen() {
   const t = useAppTheme();

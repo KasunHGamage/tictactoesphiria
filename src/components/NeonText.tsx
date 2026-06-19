@@ -39,9 +39,9 @@ export const NeonX: React.FC<TextProps> = ({ children, style, ...rest }) => {
         styles.piece,
         {
           color: t.accent,
-          textShadowColor: t.mode === 'arcade' ? t.accent : 'transparent',
+          textShadowColor: 'transparent',
           textShadowOffset: { width: 0, height: 0 },
-          textShadowRadius: t.mode === 'arcade' ? 14 : 0,
+          textShadowRadius: 0,
         },
         style,
       ]}
@@ -60,9 +60,9 @@ export const NeonO: React.FC<TextProps> = ({ children, style, ...rest }) => {
         styles.piece,
         {
           color: t.secondary,
-          textShadowColor: t.mode === 'arcade' ? t.secondary : 'transparent',
+          textShadowColor: 'transparent',
           textShadowOffset: { width: 0, height: 0 },
-          textShadowRadius: t.mode === 'arcade' ? 14 : 0,
+          textShadowRadius: 0,
         },
         style,
       ]}

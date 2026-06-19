@@ -1,6 +1,6 @@
 import { 
   doc, getDoc, setDoc, runTransaction, onSnapshot, 
-  serverTimestamp, Unsubscribe, updateDoc, arrayUnion
+  serverTimestamp, Unsubscribe, updateDoc, arrayUnion, collection, query, where, getDocs
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { MatchDocument, MatchStatus, MovePayload, PlayerInfo } from './matchTypes';
@@ -14,6 +14,35 @@ const matchRef = (id: string) => doc(db, 'matches', id);
 const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function generateMatchId() {
   return Array.from({ length: 6 }, () => CHARS[Math.floor(Math.random() * CHARS.length)]).join('');
+}
+
+/**
+ * Check if a user is already in an active match
+ * Returns the match ID if they are in a playing/waiting match, null otherwise
+ */
+export async function getUserActiveMatch(uid: string): Promise<string | null> {
+  const activeStatuses: MatchStatus[] = ['waiting', 'playing', 'timeout_pending'];
+  const playerXQ = query(
+    collection(db, 'matches'),
+    where('playerX.uid', '==', uid),
+    where('status', 'in', activeStatuses)
+  );
+  const playerXSnap = await getDocs(playerXQ);
+  if (!playerXSnap.empty) {
+    return (playerXSnap.docs[0].data() as MatchDocument).id;
+  }
+
+  const playerOQ = query(
+    collection(db, 'matches'),
+    where('playerO.uid', '==', uid),
+    where('status', 'in', activeStatuses)
+  );
+  const playerOSnap = await getDocs(playerOQ);
+  if (!playerOSnap.empty) {
+    return (playerOSnap.docs[0].data() as MatchDocument).id;
+  }
+
+  return null;
 }
 
 export async function createMatch(uid: string, displayName: string, config: GameConfig = DEFAULT_CONFIG): Promise<string> {
@@ -59,7 +88,15 @@ export async function joinMatch(matchId: string, uid: string, displayName: strin
     const snap = await tx.get(matchRef(matchId));
     if (!snap.exists()) throw new Error('Match not found');
     const data = snap.data() as MatchDocument;
-    if (data.status !== 'waiting') throw new Error('Match already started');
+    
+    // Check if match is still waiting
+    if (data.status !== 'waiting') throw new Error('Match already started or unavailable');
+    
+    // Check if playerO slot is still empty (prevent race condition)
+    if (data.playerO !== null) throw new Error('Match already has two players');
+    
+    // Check if the inviter (playerX) is still the same person (not in another match)
+    if (!data.playerX || !data.playerX.uid) throw new Error('Invalid match - no inviter');
     
     tx.update(matchRef(matchId), {
       playerO: { uid, displayName },
@@ -72,10 +109,21 @@ export async function joinMatch(matchId: string, uid: string, displayName: strin
   });
 }
 
-export function listenToMatch(matchId: string, onUpdate: (match: MatchDocument) => void): Unsubscribe {
-  return onSnapshot(matchRef(matchId), (snap) => {
-    if (snap.exists()) onUpdate(snap.data() as MatchDocument);
-  });
+export function listenToMatch(
+  matchId: string,
+  onUpdate: (match: MatchDocument) => void,
+  onError?: (error: Error) => void,
+): Unsubscribe {
+  return onSnapshot(
+    matchRef(matchId),
+    (snap) => {
+      if (snap.exists()) onUpdate(snap.data() as MatchDocument);
+    },
+    (error) => {
+      console.warn('[Firestore] match listener failed:', error);
+      onError?.(error);
+    }
+  );
 }
 
 export async function applyMove(matchId: string, payload: MovePayload, playerSide: Player, expectedMoveCount: number): Promise<void> {

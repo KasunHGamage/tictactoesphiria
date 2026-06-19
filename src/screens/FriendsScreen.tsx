@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import ScreenWrapper from '../components/ScreenWrapper'; // Re-save to fix undefined import
+import ScreenWrapper from '../components/ScreenWrapper';
 import {
   StyleSheet, Text, View, ActivityIndicator,
-  TextInput, Pressable, Alert, SectionList,
+  TextInput, Pressable, SectionList,
   Platform, Share, TouchableOpacity,
 } from 'react-native';
+import ThemedAlert, { ThemedAlertButton } from '../components/ThemedAlert';
 import * as Clipboard from 'expo-clipboard';
 import { Spacing } from '../../constants/themes';
 import { useAppTheme } from '../context/ThemeContext';
@@ -37,6 +38,23 @@ export default function FriendsScreen({ route }: any) {
   const [invitingUid,    setInvitingUid]    = useState<string | null>(null);
   const [pendingInvitesTo, setPendingInvitesTo] = useState<Record<string, boolean>>({});
 
+  // Themed alert state
+  const [alertVisible,  setAlertVisible]  = useState(false);
+  const [alertTitle,    setAlertTitle]    = useState('');
+  const [alertMessage,  setAlertMessage]  = useState('');
+  const [alertButtons,  setAlertButtons]  = useState<ThemedAlertButton[]>([]);
+
+  const showAlert = (
+    title: string,
+    message: string,
+    buttons: ThemedAlertButton[] = [{ text: 'OK', style: 'default' }],
+  ) => {
+    setAlertTitle(title);
+    setAlertMessage(message);
+    setAlertButtons(buttons);
+    setAlertVisible(true);
+  };
+
   const { incoming: matchInvites, inviteFriend, accept, reject } = useMatchInvitations(() => {});
 
   useEffect(() => {
@@ -66,11 +84,15 @@ export default function FriendsScreen({ route }: any) {
 
   useEffect(() => {
     const unsubs = friendUids.map(uid =>
-      onSnapshot(doc(db, 'users', uid), (snap) => {
-        if (snap.exists()) {
-          setFriendsMap(prev => ({ ...prev, [uid]: snap.data() as UserProfile }));
-        }
-      })
+      onSnapshot(
+        doc(db, 'users', uid),
+        (snap) => {
+          if (snap.exists()) {
+            setFriendsMap(prev => ({ ...prev, [uid]: snap.data() as UserProfile }));
+          }
+        },
+        (error) => console.warn('[Firestore] friend profile listener failed:', error)
+      )
     );
     return () => unsubs.forEach(unsub => unsub());
   }, [friendUids]);
@@ -83,11 +105,11 @@ export default function FriendsScreen({ route }: any) {
     try {
       const target = await getUserByGameId(searchId);
       if (!target) {
-        Alert.alert('Not Found', 'No user found with this Game ID.');
+        showAlert('Not Found', 'No user found with this Game ID.');
       } else if (target.uid === user?.uid) {
-        Alert.alert('Nice Try', "You can't add yourself!");
+        showAlert('Nice Try', "You can't add yourself!");
       } else {
-        Alert.alert('Add Friend', `Send friend request to ${target.displayName}?`, [
+        showAlert('Add Friend', `Send friend request to ${target.displayName}?`, [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Send', onPress: () => sendFriendRequest(user!.uid, user!.displayName!, target.uid, target.displayName) },
         ]);
@@ -115,7 +137,7 @@ export default function FriendsScreen({ route }: any) {
 
   // ── Render helpers ───────────────────────────────────────────────
   const handleRemoveFriend = (friendId: string, friendName: string) => {
-    Alert.alert(
+    showAlert(
       'Remove Friend',
       `Are you sure you want to remove ${friendName} from your friends list?`,
       [
@@ -128,18 +150,18 @@ export default function FriendsScreen({ route }: any) {
   const handleInvite = async (friend: UserProfile) => {
     if (invitingUid) return;
     if (pendingInvitesTo[friend.uid]) {
-      Alert.alert('⏳ Invite Pending', `An invite to ${friend.displayName} is already pending.`);
+      showAlert('Invite Pending', `An invite to ${friend.displayName} is already pending.`);
       return;
     }
     setInvitingUid(friend.uid);
     try {
       await inviteFriend(friend.uid);
-      Alert.alert('⚔️ Invite Sent!', `Match invitation sent to ${friend.displayName}.`);
+      showAlert('Invite Sent!', `Match invitation sent to ${friend.displayName}.`);
     } catch (e: any) {
       if (e?.message === 'INVITE_PENDING') {
-        Alert.alert('⏳ Invite Pending', `An invite to ${friend.displayName} is already pending.`);
+        showAlert('Invite Pending', `An invite to ${friend.displayName} is already pending.`);
       } else {
-        Alert.alert('Error', 'Could not send invite. Try again.');
+        showAlert('Error', 'Could not send invite. Try again.');
       }
     } finally {
       setInvitingUid(null);
@@ -258,15 +280,44 @@ export default function FriendsScreen({ route }: any) {
         await accept(item);
       } catch (e: any) {
         if (e?.message === 'SENDER_OFFLINE') {
-          Alert.alert(
-            '📴 Player Offline',
+          showAlert(
+            'Player Offline',
             `${item.fromName} is no longer online. The invite has been removed.`,
           );
+        } else if (e?.message === 'USER_ALREADY_IN_MATCH') {
+          showAlert(
+            'Already in Match',
+            `You're already in a match with another friend. Finish that match first!`,
+          );
+        } else if (e?.message === 'MATCH_ALREADY_FILLED') {
+          // Silently handle
         } else {
-          Alert.alert('Error', 'Could not join the match. Please try again.');
+          showAlert('Error', 'Could not join the match. Please try again.');
         }
       }
     };
+
+    // Show special UI if invite is marked as user_in_match (friend is already in a match)
+    if (item.status === 'user_in_match') {
+      return (
+        <View style={[
+          s.item,
+          { backgroundColor: t.card, borderColor: t.warning + '88', borderWidth: 1.5 },
+          t.glow(t.warning, 8) as any,
+        ]}>
+          <View style={s.info}>
+            <Text style={[s.nameText, { color: t.textPrimary }]}>{item.fromName}</Text>
+            <Text style={[s.statusText, { color: t.warning }]}>⏳ YOUR FRIEND IS IN A MATCH</Text>
+          </View>
+          <Pressable
+            style={[s.actionBtn, { backgroundColor: t.warning + '22', borderColor: t.warning + '66' }]}
+            onPress={() => reject(item.id)}
+          >
+            <Text style={[s.actionBtnText, { color: t.textPrimary }]}>✕</Text>
+          </Pressable>
+        </View>
+      );
+    }
 
     return (
       <View style={[
@@ -280,16 +331,20 @@ export default function FriendsScreen({ route }: any) {
         </View>
         <View style={s.actions}>
           <Pressable
-            style={[s.actionBtn, { backgroundColor: t.success + '22', borderColor: t.success + '66' }]}
+            style={[
+              s.challengeBtn,
+              { backgroundColor: t.success + '22', borderColor: t.success + '66' },
+              t.glow(t.success, 4) as any
+            ]}
             onPress={handleAccept}
           >
-            <Text style={[s.actionBtnText, { color: t.textPrimary }]}>⚔️</Text>
+            <Text style={[s.challengeBtnText, { color: t.success }]}>⚔️ ACCEPT</Text>
           </Pressable>
           <Pressable
-            style={[s.actionBtn, { backgroundColor: t.lose + '22', borderColor: t.lose + '66' }]}
+            style={[s.challengeBtn, { backgroundColor: t.lose + '22', borderColor: t.lose + '66' }]}
             onPress={() => reject(item.id)}
           >
-            <Text style={[s.actionBtnText, { color: t.textPrimary }]}>✕</Text>
+            <Text style={[s.challengeBtnText, { color: t.lose }]}>✕ DECLINE</Text>
           </Pressable>
         </View>
       </View>
@@ -301,10 +356,10 @@ export default function FriendsScreen({ route }: any) {
       await Clipboard.setStringAsync(myProfile.gameId);
       try {
         await Share.share({
-          message: `🎮 Add me on Moving Tic-Tac-Toe!\nMy Game ID: ${myProfile.gameId}\n\nSearch my ID in the Friends screen to send a request!`,
-          title: 'My Moving Tic-Tac-Toe Game ID',
+          message: `🎮 Add me on MoveTac!\nMy Game ID: ${myProfile.gameId}\n\nSearch my ID in the Friends screen to send a request!`,
+          title: 'My MoveTac Game ID',
         });
-      } catch (e) {
+      } catch {
         // user cancelled – ignore
       }
     }
@@ -414,6 +469,13 @@ export default function FriendsScreen({ route }: any) {
             </View>
           ) : null
         }
+      />
+      <ThemedAlert
+        visible={alertVisible}
+        title={alertTitle}
+        message={alertMessage}
+        buttons={alertButtons}
+        onDismiss={() => setAlertVisible(false)}
       />
     </ScreenWrapper>
   );

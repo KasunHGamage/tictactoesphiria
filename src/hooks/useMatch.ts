@@ -20,10 +20,14 @@ export function useMatch(matchId: string, myUid: string, playerSide: Player) {
     setOptimisticBoard(null);
     setError(null);
 
-    const unsub = listenToMatch(matchId, (updated) => {
-      setMatch(updated);
-      setOptimisticBoard(null);
-    });
+    const unsub = listenToMatch(
+      matchId,
+      (updated) => {
+        setMatch(updated);
+        setOptimisticBoard(null);
+      },
+      (listenerError) => setError(listenerError.message)
+    );
     return unsub;
   }, [matchId]);
 

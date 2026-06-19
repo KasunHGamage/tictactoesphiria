@@ -38,7 +38,7 @@ export function useMatchInvitations(onMatchStarted: (matchId: string, playerSide
 
   const accept = async (invite: MatchInvite) => {
     if (!user || !invite.matchId) return;
-    return acceptMatchInvite(invite.id, invite.matchId, user.uid, user.displayName || 'Player');
+    await acceptMatchInvite(invite.id, invite.matchId, user.uid, user.displayName || 'Player');
   };
 
   const reject = async (inviteId: string) => {

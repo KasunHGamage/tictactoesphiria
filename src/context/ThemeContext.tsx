@@ -7,7 +7,7 @@ import React, {
 } from 'react';
 import { Animated } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppTheme, ThemeMode, THEMES, arcadeTheme } from '../../constants/themes';
+import { AppTheme, ThemeMode, THEMES, calmTheme } from '../../constants/themes';
 
 const STORAGE_KEY = '@theme_mode';
 
@@ -21,8 +21,8 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
-  theme:      arcadeTheme,
-  themeMode:  'arcade',
+  theme:      calmTheme,
+  themeMode:  'calm',
   toggleTheme: () => {},
   setTheme:   () => {},
   fadeAnim:   new Animated.Value(1),
@@ -30,7 +30,7 @@ const ThemeContext = createContext<ThemeContextValue>({
 
 // ── Provider ──────────────────────────────────────────────────────
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [themeMode, setThemeMode] = useState<ThemeMode>('arcade');
+  const [themeMode, setThemeMode] = useState<ThemeMode>('calm');
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   // Restore persisted preference on mount

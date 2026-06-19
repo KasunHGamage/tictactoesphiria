@@ -16,21 +16,33 @@ const NeonButton: React.FC<Props> = ({
   title, onPress, variant = 'primary', disabled, style, small,
 }) => {
   const t = useAppTheme();
-
   const isCalm = t.mode === 'calm';
 
-  const borderColor =
-    variant === 'primary'   ? t.primary :
-    variant === 'secondary' ? t.secondary :
-    t.accent;
+  // Premium color determination
+  const getPremiumColors = () => {
+    if (variant === 'primary') {
+      return { bg: t.primary, text: t.textOnPrimary, border: t.primary };
+    } else if (variant === 'secondary') {
+      return { bg: 'transparent', text: t.secondary, border: t.secondary };
+    } else {
+      return { bg: t.accent, text: t.textOnPrimary, border: t.accent };
+    }
+  };
 
-  const bgColor = isCalm
-    ? (variant === 'primary' ? t.primary : variant === 'secondary' ? t.secondary : t.accent)
-    : (variant === 'primary' ? t.primary : variant === 'secondary' ? 'transparent' : '#1A0010');
+  const { bg, text, border } = getPremiumColors();
 
-  const textColor = isCalm
-    ? t.textOnPrimary // in calm mode, all buttons are solid, so text should be white
-    : (variant === 'secondary' ? t.secondary : variant === 'danger' ? t.accent : t.textOnPrimary);
+  // For calm theme: use premium soft shadows, thin borders
+  // For arcade: keep glow effects
+  const shadowStyle = isCalm
+    ? (t.shadowElevation('md') as any)
+    : (t.glow(border, 10) as any);
+
+  const pressedShadowStyle = isCalm
+    ? (t.shadowElevation('sm') as any)
+    : (t.glow(border, 20) as any);
+
+  const borderColor = isCalm ? 'rgba(200,155,109,0.2)' : border;
+  const borderWidth = isCalm ? 0.8 : 1.5;
 
   return (
     <Pressable
@@ -38,9 +50,13 @@ const NeonButton: React.FC<Props> = ({
       disabled={disabled}
       style={({ pressed }) => [
         styles.base,
-        { backgroundColor: bgColor, borderColor },
-        t.glow(borderColor, 10) as any,
-        pressed && [styles.pressed, { ...(t.glow(borderColor, 20) as any) }],
+        {
+          backgroundColor: bg,
+          borderColor,
+          borderWidth,
+        },
+        shadowStyle,
+        pressed && [styles.pressed, pressedShadowStyle],
         disabled && styles.disabled,
         style,
       ]}
@@ -49,7 +65,13 @@ const NeonButton: React.FC<Props> = ({
       {t.mode === 'arcade' && (
         <View style={styles.shine} pointerEvents="none" />
       )}
-      <Text style={[styles.text, small && styles.textSmall, { color: textColor }]}>
+      <Text
+        style={[
+          styles.text,
+          small && styles.textSmall,
+          { color: text, fontWeight: Typography.semibold as any },
+        ]}
+      >
         {title}
       </Text>
     </Pressable>
@@ -58,8 +80,7 @@ const NeonButton: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: 14,
-    borderWidth: 1.5,
+    borderRadius: 12,
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.lg,
     alignItems: 'center',
@@ -71,23 +92,22 @@ const styles = StyleSheet.create({
     top: 0, left: 0, right: 0,
     height: '45%',
     backgroundColor: 'rgba(255,255,255,0.07)',
-    borderTopLeftRadius: 14,
-    borderTopRightRadius: 14,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
   },
   pressed: {
     transform: [{ scale: 0.97 }],
-    opacity: 0.9,
+    opacity: 0.85,
   },
   disabled: { opacity: 0.4 },
   text: {
     fontSize: 15,
-    fontWeight: '900',
     fontFamily: Typography.fontFamily,
-    letterSpacing: 1.5,
+    letterSpacing: 0.3,
   },
   textSmall: {
     fontSize: 12,
-    letterSpacing: 1,
+    letterSpacing: 0.2,
   },
 });
 

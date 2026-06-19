@@ -67,7 +67,7 @@ function Cell({ index, value, isSelected, isWinCell, size, fontSize, disabled, o
       : 1;
   }, [isWinCell]);
 
-  const { winColor, selectedColor, cellBg, cellBorder, isCalm } = colors;
+  const { winColor, selectedColor, cellBg, cellBorder } = colors;
   const animCell = useAnimatedStyle(() => ({
     transform: [{ scale: isWinCell ? pulse.value : scale.value }],
     borderColor: isWinCell ? winColor : isSelected ? selectedColor : cellBorder,
@@ -90,8 +90,8 @@ function Cell({ index, value, isSelected, isWinCell, size, fontSize, disabled, o
         {value && (
           <Text style={{
             fontSize, fontWeight: '900', color: pieceColor,
-            textShadowColor: isCalm ? 'transparent' : pieceColor,
-            textShadowRadius: isCalm ? 0 : 10,
+            textShadowColor: 'transparent',
+            textShadowRadius: 0,
           }}>
             {value === 'X' ? '✕' : '○'}
           </Text>
@@ -224,7 +224,7 @@ export default function GameScreen({ navigation, route }: any) {
 
   const cellColors = { winColor: t.warning, selectedColor: t.primary, cellBg: t.card, cellBorder: t.border, xColor: t.accent, oColor: t.secondary, isCalm };
   const resultColor = state.winner === 'X' ? t.win : state.winner === 'O' ? t.lose : t.textPrimary;
-  const modalBg    = isCalm ? { backgroundColor: '#FAF9F6', borderColor: t.border, borderWidth: 1.5 } : { backgroundColor: '#130820', borderColor: t.primary, borderWidth: 2, ...(t.glow(t.primary, 20) as any) };
+  const modalBg    = isCalm ? { backgroundColor: t.bg, borderColor: t.border, borderWidth: 1.5 } : { backgroundColor: t.cardAlt, borderColor: t.primary, borderWidth: 1.5 };
 
   return (
     <ScreenWrapper scroll={false} horizontalPadding={0}>
@@ -256,7 +256,7 @@ export default function GameScreen({ navigation, route }: any) {
           </View>
 
           <View style={styles.vsContainer}>
-            <View style={[styles.vsCircle, { backgroundColor: isCalm ? t.cardAlt : '#160B28', borderColor: t.primary + '66' }]}>
+            <View style={[styles.vsCircle, { backgroundColor: t.cardAlt, borderColor: t.primary + '66' }]}>
               <Text style={[styles.vsTxt, { color: t.primary }]}>VS</Text>
             </View>
           </View>

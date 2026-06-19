@@ -6,13 +6,52 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCP66rdm5ti9kfAx0KlhxRz-zkP-40p0jk",
+        "EXPO_PUBLIC_AUTH_DOMAIN": "tic-tac-toe-89b4f.firebaseapp.com",
+        "EXPO_PUBLIC_PROJECT_ID": "tic-tac-toe-89b4f",
+        "EXPO_PUBLIC_STORAGE_BUCKET": "tic-tac-toe-89b4f.firebasestorage.app",
+        "EXPO_PUBLIC_MESSAGING_SENDER_ID": "1098974023992",
+        "EXPO_PUBLIC_APP_ID": "1:1098974023992:web:f2e2c4d8eb64714790f1cd",
+        "EXPO_PUBLIC_MEASUREMENT_ID": "G-RT9GV03W2E",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "1098974023992-kcj8up6e1d2l3p6n8g84akisd4u819ot.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "1098974023992-l88sdngbbnhs4sv4d105jse5pvir39ng.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "1098974023992-de1imb58k516n846je9ftp9t2e5kkl0s.apps.googleusercontent.com"
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCP66rdm5ti9kfAx0KlhxRz-zkP-40p0jk",
+        "EXPO_PUBLIC_AUTH_DOMAIN": "tic-tac-toe-89b4f.firebaseapp.com",
+        "EXPO_PUBLIC_PROJECT_ID": "tic-tac-toe-89b4f",
+        "EXPO_PUBLIC_STORAGE_BUCKET": "tic-tac-toe-89b4f.firebasestorage.app",
+        "EXPO_PUBLIC_MESSAGING_SENDER_ID": "1098974023992",
+        "EXPO_PUBLIC_APP_ID": "1:1098974023992:web:f2e2c4d8eb64714790f1cd",
+        "EXPO_PUBLIC_MEASUREMENT_ID": "G-RT9GV03W2E",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "1098974023992-kcj8up6e1d2l3p6n8g84akisd4u819ot.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "1098974023992-l88sdngbbnhs4sv4d105jse5pvir39ng.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "1098974023992-de1imb58k516n846je9ftp9t2e5kkl0s.apps.googleusercontent.com"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCP66rdm5ti9kfAx0KlhxRz-zkP-40p0jk",
+        "EXPO_PUBLIC_AUTH_DOMAIN": "tic-tac-toe-89b4f.firebaseapp.com",
+        "EXPO_PUBLIC_PROJECT_ID": "tic-tac-toe-89b4f",
+        "EXPO_PUBLIC_STORAGE_BUCKET": "tic-tac-toe-89b4f.firebasestorage.app",
+        "EXPO_PUBLIC_MESSAGING_SENDER_ID": "1098974023992",
+        "EXPO_PUBLIC_APP_ID": "1:1098974023992:web:f2e2c4d8eb64714790f1cd",
+        "EXPO_PUBLIC_MEASUREMENT_ID": "G-RT9GV03W2E",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "1098974023992-kcj8up6e1d2l3p6n8g84akisd4u819ot.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "1098974023992-l88sdngbbnhs4sv4d105jse5pvir39ng.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "1098974023992-de1imb58k516n846je9ftp9t2e5kkl0s.apps.googleusercontent.com"
+      }
     }
   },
   "submit": {

@@ -1,12 +1,11 @@
-// ─────────────────────────────────────────────
-//  authService.ts — Firebase Auth operations
-// ─────────────────────────────────────────────
-
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
   signOut, 
-  updateProfile 
+  updateProfile,
+  sendPasswordResetEmail,
+  signInWithCredential,
+  OAuthProvider
 } from 'firebase/auth';
 import { auth } from './firebase';
 import { createUserProfile } from './userService';
@@ -41,4 +40,28 @@ export async function login(email: string, pass: string) {
  */
 export async function logout() {
   await signOut(auth);
+}
+
+/**
+ * Send password reset email.
+ */
+export async function sendPasswordReset(email: string) {
+  await sendPasswordResetEmail(auth, email);
+}
+
+
+
+/**
+ * Log in using Apple Sign-In and authenticate with Firebase.
+ */
+export async function loginWithApple(identityToken: string, rawNonce: string) {
+  // Create Firebase OAuthProvider credential for apple.com
+  const provider = new OAuthProvider('apple.com');
+  const credential = provider.credential({
+    idToken: identityToken,
+    rawNonce: rawNonce,
+  });
+
+  const userCredential = await signInWithCredential(auth, credential);
+  return userCredential.user;
 }

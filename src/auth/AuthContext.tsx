@@ -6,7 +6,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { AppState } from 'react-native';
-import { updateUserLastSeen } from '../services/userService';
+import { ensureUserProfile, updateUserLastSeen } from '../services/userService';
 
 interface AuthContextType {
   user: User | null;
@@ -35,13 +35,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (!user) return;
+    let cancelled = false;
 
     const updatePresence = () => {
       updateUserLastSeen(user.uid).catch(err => console.warn('[Presence]', err));
     };
 
-    // Immediate update on login/mount
-    updatePresence();
+    const provider = user.providerData[0]?.providerId || 'password';
+    ensureUserProfile(user.uid, user.email, user.displayName, user.photoURL, provider)
+      .then(() => {
+        if (!cancelled) updatePresence();
+      })
+      .catch(err => console.warn('[Profile]', err));
 
     // Periodic heartbeat every 10 seconds while active
     const intervalId = setInterval(() => {
@@ -58,6 +63,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     return () => {
+      cancelled = true;
       clearInterval(intervalId);
       subscription.remove();
     };

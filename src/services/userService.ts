@@ -4,7 +4,7 @@
 
 import { doc, getDoc, setDoc, query, collection, where, getDocs, serverTimestamp, updateDoc, increment, deleteDoc } from 'firebase/firestore';
 import { getAuth, deleteUser } from 'firebase/auth';
-import { db } from './firebase';
+import { db, waitForAuthToken } from './firebase';
 import { Difficulty } from '../game/gameTypes';
 
 export interface UserProfile {
@@ -19,6 +19,9 @@ export interface UserProfile {
   status: 'online' | 'offline' | 'in-match';
   lastSeen?: number;
   createdAt: any;
+  photoURL?: string;
+  lastLoginAt?: any;
+  provider?: string;
 }
 
 /**
@@ -52,7 +55,13 @@ function generateGameId(): string {
 /**
  * Creates a new user profile in Firestore after successful signup.
  */
-export async function createUserProfile(uid: string, email: string, displayName: string): Promise<UserProfile> {
+export async function createUserProfile(
+  uid: string,
+  email: string,
+  displayName: string,
+  photoURL?: string | null,
+  provider?: string | null
+): Promise<UserProfile> {
   let gameId = '';
   let unique = false;
   let attempts = 0;
@@ -80,6 +89,9 @@ export async function createUserProfile(uid: string, email: string, displayName:
     level: 1,
     status: 'online',
     createdAt: serverTimestamp(),
+    lastLoginAt: serverTimestamp(),
+    ...(photoURL ? { photoURL } : {}),
+    ...(provider ? { provider } : {}),
   };
 
   await setDoc(doc(db, 'users', uid), profile);
@@ -87,8 +99,44 @@ export async function createUserProfile(uid: string, email: string, displayName:
 }
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
+  await waitForAuthToken();
   const snap = await getDoc(doc(db, 'users', uid));
   return snap.exists() ? (snap.data() as UserProfile) : null;
+}
+
+export async function ensureUserProfile(
+  uid: string,
+  email?: string | null,
+  displayName?: string | null,
+  photoURL?: string | null,
+  provider?: string | null
+): Promise<UserProfile> {
+  const existing = await getUserProfile(uid);
+  if (existing) {
+    const userRef = doc(db, 'users', uid);
+    const updates: any = {
+      lastLoginAt: serverTimestamp(),
+    };
+    if (photoURL && !existing.photoURL) {
+      updates.photoURL = photoURL;
+    }
+    if (displayName && !existing.displayName) {
+      updates.displayName = displayName;
+    }
+    if (provider && !existing.provider) {
+      updates.provider = provider;
+    }
+    await updateDoc(userRef, updates);
+    return { ...existing, ...updates };
+  }
+
+  return createUserProfile(
+    uid,
+    email || '',
+    displayName || email?.split('@')[0] || 'Player',
+    photoURL,
+    provider
+  );
 }
 
 export async function getUserByGameId(gameId: string): Promise<UserProfile | null> {
