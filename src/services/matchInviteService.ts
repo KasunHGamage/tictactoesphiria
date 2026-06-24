@@ -20,6 +20,11 @@ export async function sendMatchInvite(
   toUid: string,
   existingMatchId?: string,
 ): Promise<string> {
+  const activeMatchId = await getUserActiveMatch(fromUid);
+  if (activeMatchId && activeMatchId !== existingMatchId) {
+    throw new Error('ALREADY_IN_MATCH');
+  }
+
   // Guard: check for a still-pending invite from me to this friend
   const dupQ = query(
     collection(db, INVITES),
@@ -69,6 +74,8 @@ export async function acceptMatchInvite(inviteId: string, matchId: string, toUid
     });
     throw new Error('USER_ALREADY_IN_MATCH');
   }
+
+
 
   // Check that the sender (playerX) is still online
   if (senderUid) {

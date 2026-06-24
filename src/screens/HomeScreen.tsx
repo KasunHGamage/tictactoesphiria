@@ -8,6 +8,7 @@ import { useAppTheme } from '../context/ThemeContext';
 import NeonButton from '../components/NeonButton';
 import { useAuth } from '../auth/AuthContext';
 import { getUserProfile, UserProfile } from '../services/userService';
+import AdBanner from '../components/AdBanner';
 
 export default function HomeScreen({ navigation }: any) {
   const { user } = useAuth();
@@ -197,6 +198,7 @@ export default function HomeScreen({ navigation }: any) {
           </Pressable>
         </View>
       </View>
+      <AdBanner />
     </ScreenWrapper>
   );
 }

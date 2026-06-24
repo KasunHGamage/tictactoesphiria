@@ -69,12 +69,14 @@ export async function rejectFriendRequest(requestId: string): Promise<void> {
  * Listen to incoming friend requests.
  */
 export function listenToRequests(uid: string, onUpdate: (reqs: FriendRequest[]) => void): Unsubscribe {
-  const q = query(collection(db, 'friendRequests'), where('to', '==', uid), where('status', '==', 'pending'));
+  const q = query(collection(db, 'friendRequests'), where('to', '==', uid));
   
   return onSnapshot(
     q,
     (snap) => {
-      const reqs = snap.docs.map(d => ({ id: d.id, ...d.data() } as FriendRequest));
+      const reqs = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as FriendRequest))
+        .filter(req => req.status === 'pending');
       onUpdate(reqs);
     },
     (error) => {
@@ -88,12 +90,14 @@ export function listenToRequests(uid: string, onUpdate: (reqs: FriendRequest[]) 
  * Listen to sent friend requests.
  */
 export function watchSentRequests(uid: string, onUpdate: (reqs: FriendRequest[]) => void): Unsubscribe {
-  const q = query(collection(db, 'friendRequests'), where('from', '==', uid), where('status', '==', 'pending'));
+  const q = query(collection(db, 'friendRequests'), where('from', '==', uid));
   
   return onSnapshot(
     q,
     (snap) => {
-      const reqs = snap.docs.map(d => ({ id: d.id, ...d.data() } as FriendRequest));
+      const reqs = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as FriendRequest))
+        .filter(req => req.status === 'pending');
       onUpdate(reqs);
     },
     (error) => {
@@ -112,10 +116,10 @@ export function listenToFriends(uid: string, onUpdate: (friendUids: string[]) =>
   return onSnapshot(
     q,
     (snap) => {
-      const friendUids = snap.docs.map(d => {
+      const friendUids = Array.from(new Set(snap.docs.map(d => {
         const users = d.data().users as string[];
         return users.find(u => u !== uid)!;
-      });
+      })));
       onUpdate(friendUids);
     },
     (error) => {

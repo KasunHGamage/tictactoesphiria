@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../auth/AuthContext';
 import { listenToFriends } from '../services/friendsService';
 import { getUserProfile } from '../services/userService';
+import AdBanner from '../components/AdBanner';
 
 export default function PlayScreen({ navigation }: any) {
   const { user } = useAuth();
@@ -135,6 +136,7 @@ export default function PlayScreen({ navigation }: any) {
           </Text>
         </View>
       </View>
+      <AdBanner />
     </ScreenWrapper>
   );
 }

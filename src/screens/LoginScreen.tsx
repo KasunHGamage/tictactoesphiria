@@ -17,6 +17,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { auth } from '../services/firebase';
+import Constants from 'expo-constants';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -24,39 +25,60 @@ export default function LoginScreen({ navigation }: any) {
   const t = useAppTheme();
   const isCalm = t.mode === 'calm';
 
-  const [email,        setEmail]        = useState('');
-  const [password,     setPassword]     = useState('');
-  const [loading,      setLoading]      = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
-  const [appleLoading,  setAppleLoading]  = useState(false);
+  const [email,          setEmail]          = useState('');
+  const [password,       setPassword]       = useState('');
+  const [showPassword,   setShowPassword]   = useState(false);
+  const [loading,        setLoading]        = useState(false);
+  const [googleLoading,  setGoogleLoading]  = useState(false);
+  const [appleLoading,   setAppleLoading]   = useState(false);
   const [appleAvailable, setAppleAvailable] = useState(false);
 
-  // expo-auth-session auto-selects the correct redirect URI per platform:
-  // - iOS  → com.googleusercontent.apps.{iosClientId}:/oauth2redirect/google
-  // - Android → reverse of androidClientId scheme
-  // The hook throws a render error if the platform-specific ID is completely absent,
-  // so we always provide androidClientId on Android (fallback to webClientId prevents
-  // the crash; actual sign-in on Android also requires a real Android OAuth client).
+  // Detect if running inside Expo Go (storeClient). In Expo Go:
+  // - expo-auth-session's Google hook REQUIRES iosClientId on iOS and androidClientId
+  //   on Android (throws a render error if absent on their respective platforms).
+  // - But native OAuth flows require SHA-1 (Android) or bundle-id scheme (iOS)
+  //   registered with Google — Expo Go's identifiers are not registered.
+  // Solution: in Expo Go, use webClientId for both iosClientId and androidClientId
+  //   (satisfies validation), and override redirectUri to the auth.expo.io proxy
+  //   (registered in Google Cloud Console as an authorized redirect URI).
+  const isExpoGo = Constants.executionEnvironment === 'storeClient';
+
+  // Build Google OAuth config:
+  // - Android: uses androidClientId → expo-auth-session auto-generates the redirect URI as:
+  //   com.googleusercontent.apps.{ANDROID_CLIENT_ID}:/oauth2redirect (custom URI scheme).
+  //   Requires "Custom URI scheme" to be ENABLED on the Android OAuth client in Google Cloud Console.
+  //   (APIs & Services → Credentials → Android client → enable Custom URI scheme toggle)
+  // - iOS standalone: uses iosClientId → native bundle-id scheme redirect.
+  // - Expo Go (iOS/Android): webClientId + auth.expo.io proxy redirect override.
   const googleConfig: Google.GoogleAuthRequestConfig = {
     webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
     scopes: ['profile', 'email'],
   };
-  if (process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID) {
-    googleConfig.iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
-  }
-  if (Platform.OS === 'android') {
-    // Must always be set on Android to avoid a render crash in the hook.
-    googleConfig.androidClientId =
-      process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ??
-      process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+
+  if (isExpoGo) {
+    // Expo Go: satisfy platform validation with webClientId, use proxy redirect.
+    if (Platform.OS === 'ios') {
+      googleConfig.iosClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+    } else {
+      googleConfig.androidClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+    }
+    googleConfig.redirectUri = 'https://auth.expo.io/@kasunharsha/moving-tic-tac-toe';
+  } else if (Platform.OS === 'android') {
+    // Native Android build: use the real Android OAuth client.
+    // expo-auth-session generates: com.googleusercontent.apps.XXXX:/oauth2redirect
+    // Custom URI scheme MUST be enabled in Google Cloud Console for this client.
+    if (process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID) {
+      googleConfig.androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+    }
+  } else {
+    // iOS native build: use the iOS-specific OAuth client.
+    if (process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID) {
+      googleConfig.iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+    }
   }
 
-  // Show the Google button only when a platform-appropriate client ID is configured.
-  // On Android, hide it until a real Android OAuth client is created.
-  const googleEnabled =
-    Platform.OS === 'ios'
-      ? !!process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
-      : !!process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+  // Show the Google button when the web client ID is available (works on all platforms).
+  const googleEnabled = !!process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 
   // No second argument — use Google's default discovery document.
   const [request, response, promptAsync] = Google.useAuthRequest(googleConfig);
@@ -273,16 +295,29 @@ export default function LoginScreen({ navigation }: any) {
 
           <View style={s.inputGroup}>
             <Text style={[s.label, { color: t.textSecondary }]}>PASSWORD</Text>
-            <TextInput
-              style={inputStyle('password')}
-              placeholder="••••••••"
-              placeholderTextColor={t.textSecondary}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              onFocus={() => setFocusedField('password')}
-              onBlur={() => setFocusedField(null)}
-            />
+            <View style={s.pwWrapper}>
+              <TextInput
+                style={[inputStyle('password'), s.pwInput]}
+                placeholder="••••••••"
+                placeholderTextColor={t.textSecondary}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                onFocus={() => setFocusedField('password')}
+                onBlur={() => setFocusedField(null)}
+              />
+              <Pressable
+                style={s.eyeBtn}
+                onPress={() => setShowPassword(v => !v)}
+                hitSlop={8}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={20}
+                  color={t.textSecondary}
+                />
+              </Pressable>
+            </View>
             <Pressable onPress={handleForgotPassword} style={s.forgotPasswordPressable}>
               <Text style={[s.forgotPasswordText, { color: t.primary, fontWeight: '600' }]}>
                 Forgot Password?
@@ -395,6 +430,10 @@ const s = StyleSheet.create({
   inputGroup: { gap: 8 },
   label:  { fontSize: 10, fontWeight: '900', letterSpacing: 3 },
   input:  { borderRadius: 14, borderWidth: 1, padding: Spacing.md, fontSize: 15 },
+
+  pwWrapper: { position: 'relative', justifyContent: 'center' },
+  pwInput:   { paddingRight: 48 },
+  eyeBtn:    { position: 'absolute', right: 14, padding: 4 },
 
   loadingWrap:  { height: 52, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderRadius: 14 },
   link:         { alignItems: 'center', paddingVertical: 4 },

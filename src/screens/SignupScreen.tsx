@@ -15,6 +15,7 @@ import { updateProfile, GoogleAuthProvider, signInWithCredential } from 'firebas
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
 import { auth } from '../services/firebase';
+import Constants from 'expo-constants';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -22,37 +23,53 @@ export default function SignupScreen({ navigation }: any) {
   const t = useAppTheme();
   const isCalm = t.mode === 'calm';
 
-  const [name,          setName]          = useState('');
-  const [email,         setEmail]         = useState('');
-  const [password,      setPassword]      = useState('');
-  const [loading,       setLoading]       = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
-  const [appleLoading,  setAppleLoading]  = useState(false);
-  const [appleAvailable, setAppleAvailable] = useState(false);
-  const [focusedField,  setFocusedField]  = useState<string | null>(null);
-  const [error,         setError]         = useState<string | null>(null);
+  const [name,            setName]            = useState('');
+  const [email,           setEmail]           = useState('');
+  const [password,        setPassword]        = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword,    setShowPassword]    = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [loading,         setLoading]         = useState(false);
+  const [googleLoading,   setGoogleLoading]   = useState(false);
+  const [appleLoading,    setAppleLoading]    = useState(false);
+  const [appleAvailable,  setAppleAvailable]  = useState(false);
+  const [focusedField,    setFocusedField]    = useState<string | null>(null);
+  const [error,           setError]           = useState<string | null>(null);
 
-  // The hook throws a render error if the platform-specific ID is completely absent,
-  // so we always provide androidClientId on Android (fallback to webClientId prevents
-  // the crash; actual sign-in on Android also requires a real Android OAuth client).
+  // Same Expo Go detection as LoginScreen — see LoginScreen.tsx for full explanation.
+  const isExpoGo = Constants.executionEnvironment === 'storeClient';
+
+  // Same Google auth config as LoginScreen — see LoginScreen.tsx for full explanation.
   const googleConfig: Google.GoogleAuthRequestConfig = {
     webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
     scopes: ['profile', 'email'],
   };
-  if (process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID) {
-    googleConfig.iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
-  }
-  if (Platform.OS === 'android') {
-    googleConfig.androidClientId =
-      process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ??
-      process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+
+  if (isExpoGo) {
+    // Expo Go: satisfy platform validation with webClientId, use proxy redirect.
+    if (Platform.OS === 'ios') {
+      googleConfig.iosClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+    } else {
+      googleConfig.androidClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+    }
+    googleConfig.redirectUri = 'https://auth.expo.io/@kasunharsha/moving-tic-tac-toe';
+  } else if (Platform.OS === 'android') {
+    // Native Android build: use the real Android OAuth client.
+    // Custom URI scheme MUST be enabled in Google Cloud Console for this client.
+    if (process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID) {
+      googleConfig.androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+    }
+  } else {
+    // iOS native build: use the iOS-specific OAuth client.
+    if (process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID) {
+      googleConfig.iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+    }
   }
 
-  // Show the Google button only when a platform-appropriate client ID is configured.
-  const googleEnabled =
-    Platform.OS === 'ios'
-      ? !!process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
-      : !!process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+  // Show the Google button when the web client ID is available (works on all platforms).
+  const googleEnabled = !!process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+
+
 
   const [request, response, promptAsync] = Google.useAuthRequest(googleConfig);
 
@@ -96,7 +113,11 @@ export default function SignupScreen({ navigation }: any) {
   }, [response]);
 
   const handleSignup = async () => {
-    if (!name || !email || !password) return;
+    if (!name || !email || !password || !confirmPassword) return;
+    if (password !== confirmPassword) {
+      setError('Passwords do not match. Please try again.');
+      return;
+    }
     setLoading(true);
     setError(null);
     try { await signUp(email, password, name); }
@@ -191,24 +212,56 @@ export default function SignupScreen({ navigation }: any) {
           )}
 
           {[
-            { field: 'name',     label: 'FULL NAME', value: name,     setter: setName,     extra: {} },
-            { field: 'email',    label: 'EMAIL',     value: email,    setter: setEmail,    extra: { autoCapitalize: 'none' as const, keyboardType: 'email-address' as const } },
-            { field: 'password', label: 'PASSWORD',  value: password, setter: setPassword, extra: { secureTextEntry: true } },
-          ].map(({ field, label, value, setter, extra }) => (
-            <View key={field} style={s.inputGroup}>
-              <Text style={[s.label, { color: t.textSecondary }]}>{label}</Text>
+            { field: 'name',            label: 'FULL NAME',        value: name,            setter: setName,            placeholder: 'Enter your name',       extra: {} },
+            { field: 'email',           label: 'EMAIL',            value: email,           setter: setEmail,           placeholder: 'Enter your email',      extra: { autoCapitalize: 'none' as const, keyboardType: 'email-address' as const } },
+            { field: 'password',        label: 'PASSWORD',         value: password,        setter: setPassword,        placeholder: '••••••••',              extra: {} },
+            { field: 'confirmPassword', label: 'CONFIRM PASSWORD', value: confirmPassword, setter: setConfirmPassword, placeholder: '••••••••',              extra: {} },
+          ].map(({ field, label, value, setter, placeholder, extra }) => {
+            const isPassword = field === 'password';
+            const isConfirmPassword = field === 'confirmPassword';
+            const isSecure = isPassword ? !showPassword : (isConfirmPassword ? !showConfirmPassword : false);
+            
+            const textInput = (
               <TextInput
-                style={inputStyle(field)}
-                placeholder={field === 'password' ? '••••••••' : `Enter your ${field}`}
+                style={[inputStyle(field), (isPassword || isConfirmPassword) && s.pwInput]}
+                placeholder={placeholder}
                 placeholderTextColor={t.textSecondary}
                 value={value}
                 onChangeText={setter}
                 onFocus={() => setFocusedField(field)}
                 onBlur={() => setFocusedField(null)}
+                secureTextEntry={isPassword || isConfirmPassword ? isSecure : undefined}
                 {...extra}
               />
-            </View>
-          ))}
+            );
+
+            return (
+              <View key={field} style={s.inputGroup}>
+                <Text style={[s.label, { color: t.textSecondary }]}>{label}</Text>
+                {isPassword || isConfirmPassword ? (
+                  <View style={s.pwWrapper}>
+                    {textInput}
+                    <Pressable
+                      style={s.eyeBtn}
+                      onPress={() => {
+                        if (isPassword) setShowPassword(v => !v);
+                        if (isConfirmPassword) setShowConfirmPassword(v => !v);
+                      }}
+                      hitSlop={8}
+                    >
+                      <Ionicons
+                        name={(isPassword ? showPassword : showConfirmPassword) ? 'eye-off-outline' : 'eye-outline'}
+                        size={20}
+                        color={t.textSecondary}
+                      />
+                    </Pressable>
+                  </View>
+                ) : (
+                  textInput
+                )}
+              </View>
+            );
+          })}
 
           <View style={s.footer}>
             {/* Email/password sign up */}
@@ -307,6 +360,10 @@ const s = StyleSheet.create({
   inputGroup: { gap: 8 },
   label:  { fontSize: 10, fontWeight: '900', letterSpacing: 3 },
   input:  { borderRadius: 14, borderWidth: 1, padding: Spacing.md, fontSize: 15 },
+
+  pwWrapper: { position: 'relative', justifyContent: 'center' },
+  pwInput:   { paddingRight: 48 },
+  eyeBtn:    { position: 'absolute', right: 14, padding: 4 },
 
   loadingWrap: { height: 52, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderRadius: 14 },
   link:        { alignItems: 'center', paddingVertical: 4 },

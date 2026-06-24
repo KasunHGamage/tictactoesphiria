@@ -21,16 +21,30 @@ function generateMatchId() {
  * Returns the match ID if they are in a playing/waiting match, null otherwise
  */
 export async function getUserActiveMatch(uid: string): Promise<string | null> {
-  const activeStatuses: MatchStatus[] = ['waiting', 'playing', 'timeout_pending'];
+  const activeStatuses: MatchStatus[] = ['playing', 'timeout_pending'];
+  const now = Date.now();
+  const FIVE_MINUTES = 5 * 60 * 1000;
+
+  // We fetch matches where player is involved and filter out stale ones
+  const checkDocs = (docs: any[]) => {
+    for (const d of docs) {
+      const data = d.data() as MatchDocument;
+      const updatedAt = data.updatedAt?.toMillis ? data.updatedAt.toMillis() : now;
+      if (now - updatedAt < FIVE_MINUTES) {
+        return data.id;
+      }
+    }
+    return null;
+  };
+
   const playerXQ = query(
     collection(db, 'matches'),
     where('playerX.uid', '==', uid),
     where('status', 'in', activeStatuses)
   );
   const playerXSnap = await getDocs(playerXQ);
-  if (!playerXSnap.empty) {
-    return (playerXSnap.docs[0].data() as MatchDocument).id;
-  }
+  const activeX = checkDocs(playerXSnap.docs);
+  if (activeX) return activeX;
 
   const playerOQ = query(
     collection(db, 'matches'),
@@ -38,9 +52,8 @@ export async function getUserActiveMatch(uid: string): Promise<string | null> {
     where('status', 'in', activeStatuses)
   );
   const playerOSnap = await getDocs(playerOQ);
-  if (!playerOSnap.empty) {
-    return (playerOSnap.docs[0].data() as MatchDocument).id;
-  }
+  const activeO = checkDocs(playerOSnap.docs);
+  if (activeO) return activeO;
 
   return null;
 }

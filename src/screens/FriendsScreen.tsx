@@ -97,7 +97,7 @@ export default function FriendsScreen({ route }: any) {
     return () => unsubs.forEach(unsub => unsub());
   }, [friendUids]);
 
-  const friends = Object.values(friendsMap).filter(Boolean);
+  const friends = friendUids.map(uid => friendsMap[uid]).filter(Boolean);
 
   const handleSearch = async () => {
     if (searchId.length !== 6) return;
@@ -160,6 +160,8 @@ export default function FriendsScreen({ route }: any) {
     } catch (e: any) {
       if (e?.message === 'INVITE_PENDING') {
         showAlert('Invite Pending', `An invite to ${friend.displayName} is already pending.`);
+      } else if (e?.message === 'ALREADY_IN_MATCH') {
+        showAlert('Already in Match', 'You are already in an active match! Finish it first.');
       } else {
         showAlert('Error', 'Could not send invite. Try again.');
       }
@@ -288,6 +290,11 @@ export default function FriendsScreen({ route }: any) {
           showAlert(
             'Already in Match',
             `You're already in a match with another friend. Finish that match first!`,
+          );
+        } else if (e?.message === 'SENDER_ALREADY_IN_MATCH') {
+          showAlert(
+            'Friend in Match',
+            `${item.fromName} is already in another match!`,
           );
         } else if (e?.message === 'MATCH_ALREADY_FILLED') {
           // Silently handle

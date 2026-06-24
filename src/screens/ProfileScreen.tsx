@@ -12,6 +12,7 @@ import { Spacing, Typography, ThemeMode } from '../../constants/themes';
 import { useAppTheme, useThemeControls } from '../context/ThemeContext';
 import { checkFirestoreConnection } from '../services/firebase';
 import Constants from 'expo-constants';
+import { Ionicons } from '@expo/vector-icons';
 
 
 
@@ -151,7 +152,6 @@ export default function ProfileScreen() {
         <View style={[
           s.avatarRing,
           { borderColor: isCalm ? t.premiumBorder : t.border },
-          isCalm ? (t.shadowElevation('md') as any) : (t.glowStrong(t.primary) as any),
         ]}>
           <View style={[s.avatarCircle, { backgroundColor: t.avatarBg }]}>
             <Text style={[
@@ -317,7 +317,15 @@ export default function ProfileScreen() {
         ]}
         onPress={logout}
       >
-        <Text style={[s.logoutText, { color: t.mode === 'arcade' ? t.lose : t.accent }]}>⏻  LOGOUT</Text>
+        <View style={s.logoutContent}>
+          <Ionicons
+            name="log-out-outline"
+            size={18}
+            color={t.mode === 'arcade' ? t.lose : t.accent}
+            style={s.logoutIcon}
+          />
+          <Text style={[s.logoutText, { color: t.mode === 'arcade' ? t.lose : t.accent }]}>LOGOUT</Text>
+        </View>
       </Pressable>
 
       <Pressable
@@ -411,7 +419,9 @@ const s = StyleSheet.create({
     borderRadius: 12, padding: Spacing.lg,
     alignItems: 'center', borderWidth: 0.8, marginBottom: Spacing.xl,
   },
-  logoutText: { fontSize: 14, fontWeight: '700', letterSpacing: 0.5 },
+  logoutContent: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  logoutIcon:    {},
+  logoutText:    { fontSize: 14, fontWeight: '700', letterSpacing: 0.5 },
 
   // Delete
   deleteBtn: { alignItems: 'center', paddingVertical: Spacing.md, marginBottom: Spacing.xl },

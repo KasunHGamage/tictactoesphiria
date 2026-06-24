@@ -19,7 +19,7 @@ service cloud.firestore {
     }
 
     function isUserInList(users) {
-      return signedIn() && users is list && request.auth.uid in users;
+      return signedIn() && request.auth.uid in users;
     }
 
     match /users/{userId} {
@@ -61,7 +61,7 @@ service cloud.firestore {
 
     match /matches/{matchId} {
       allow get: if signedIn()
-        && (isMatchParticipant(resource.data) || resource.data.status == 'waiting');
+        && (resource == null || isMatchParticipant(resource.data) || resource.data.status == 'waiting');
       allow list: if isMatchParticipant(resource.data);
       allow create: if signedIn()
         && request.resource.data.playerX.uid == request.auth.uid
