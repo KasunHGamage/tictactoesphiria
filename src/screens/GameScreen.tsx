@@ -104,12 +104,12 @@ function Cell({ index, value, isSelected, isWinCell, size, fontSize, disabled, o
 // ── Main Screen ───────────────────────────────────────────────────
 export default function GameScreen({ navigation, route }: any) {
   const { user }    = useContext(AuthContext);
-  const { width: W } = useWindowDimensions();
+  const { width: W, height: H } = useWindowDimensions();
   const t           = useAppTheme();
   const isCalm      = t.mode === 'calm';
 
   const config: GameConfig = route.params?.config || DEFAULT_CONFIG;
-  const BOARD_WIDTH = W - 32;
+  const BOARD_WIDTH = Math.min(W - 32, H * 0.5, 460);
   const cellSize    = Math.floor((BOARD_WIDTH - 4) / config.gridSize);
 
   const [roundNumber,       setRoundNumber]       = useState(1);

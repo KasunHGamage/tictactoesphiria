@@ -108,10 +108,10 @@ function Cell({ index, value, isSelected, isWinCell, isOtherDimmed, size, fontSi
 // ── Main Screen ───────────────────────────────────────────────────
 export default function MultiplayerGameScreen({ route, navigation }: any) {
   const { matchId, playerSide, myUid, myName } = route.params;
-  const { width: W } = useWindowDimensions();
+  const { width: W, height: H } = useWindowDimensions();
   const t       = useAppTheme();
   const isCalm  = t.mode === 'calm';
-  const BOARD_WIDTH = W - 32;
+  const BOARD_WIDTH = Math.min(W - 32, H * 0.5, 460);
 
   const { match, optimisticBoard, myTurn, error, applyMove, resign } = useMatch(matchId, myUid, playerSide);
 
