@@ -1,10 +1,27 @@
 import React, { useState } from 'react';
 import { View, Platform, StyleSheet } from 'react-native';
-import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
+let BannerAd: any = null;
+let BannerAdSize: any = null;
+let TestIds: any = null;
+
+if (!isExpoGo) {
+  try {
+    const ads = require('react-native-google-mobile-ads');
+    BannerAd = ads.BannerAd;
+    BannerAdSize = ads.BannerAdSize;
+    TestIds = ads.TestIds;
+  } catch (e) {
+    // Native module not loaded
+  }
+}
 
 // Official IDs
-const androidAdUnitId = __DEV__ ? TestIds.BANNER : 'ca-app-pub-6992032589730818/7011678209';
-const iosAdUnitId = __DEV__ ? TestIds.BANNER : 'ca-app-pub-6992032589730818/8771060971';
+const androidAdUnitId = __DEV__ ? TestIds?.BANNER : 'ca-app-pub-6992032589730818/7011678209';
+const iosAdUnitId = __DEV__ ? TestIds?.BANNER : 'ca-app-pub-6992032589730818/8771060971';
 
 const adUnitId = Platform.OS === 'ios' ? iosAdUnitId : androidAdUnitId;
 
@@ -12,7 +29,7 @@ export default function AdBanner() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isError, setIsError] = useState(false);
 
-  if (isError) return null;
+  if (isExpoGo || !BannerAd || isError) return null;
 
   return (
     <View style={[styles.container, !isLoaded && styles.hidden]}>
